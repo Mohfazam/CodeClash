@@ -44,9 +44,49 @@ git push origin main
 
 ## Problem Statement
 
-[Write your problem statement here]
+Competitive programming is broken in one key way. It is a solo activity.
+
+Developers practice on platforms like LeetCode and HackerRank, solving problems alone with no real-time competition, no meaningful feedback, and no clear measure of skill against peers.
+
+This creates three major issues:
+
+- No real competition  
+  You solve problems, but you never know how you perform under pressure against another developer  
+
+- Weak motivation  
+  No stakes, no urgency, no reason to stay consistent  
+
+- Poor skill visibility  
+  Problem count does not reflect actual ability or decision-making under time constraints  
+
+As a result, many developers stagnate or drop off.
 
 ---
+
+## Solution
+
+CodeClash turns DSA practice into a real-time competitive experience.
+
+Two developers face the same problem at the same time. One wins. One loses.
+
+Key features:
+
+- Real-time 1v1 battles  
+  Compete against another developer live on the same problem  
+
+- ELO-based ranking system  
+  Every match affects your rating. Skill progression is measurable  
+
+- AI-powered insights  
+  Get post-match analysis including mistakes, timing, and complexity  
+
+- Event-driven tracking  
+  Every action is logged and analyzed for deeper insights  
+
+- Engagement mechanics  
+  Features like Dead Man’s Switch prevent passive play and enforce activity  
+
+CodeClash is not just practice. It is competition, feedback, and growth combined.
 
 ## Submission Guidelines
 
