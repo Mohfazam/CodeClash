@@ -12,6 +12,9 @@ dotenv.config();
 import { db } from "../db";
 import { problems } from "../db/schema";
 import type { NewProblem } from "../db/schema";
+import "dotenv/config";
+
+console.log("SEED ENV:", process.env.DATABASE_URL);
 
 const PROBLEM_BANK: NewProblem[] = [
   // ─── Arrays (5) ───────────────────────────────────────────────────────────

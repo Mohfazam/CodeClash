@@ -2,30 +2,41 @@
   "name": "backend",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "dist/index.js",
   "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "seed": "tsx --env-file=.env src/seed/seed.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "db:studio": "drizzle-kit studio"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@types/cors": "^2.8.19",
-    "@types/dotenv": "^6.1.1",
-    "@types/express": "^5.0.6",
+    "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.2",
     "pg": "^8.20.0",
-    "postgres": "^3.4.9"
+    "postgres": "^3.4.9",
+    "socket.io": "^4.8.3",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
-    "drizzle-kit": "^0.31.10"
+    "@types/bcrypt": "^6.0.0",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.9",
+    "@types/node": "^22.0.0",
+    "drizzle-kit": "^0.31.10",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
   }
 }
