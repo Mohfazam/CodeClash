@@ -32,6 +32,58 @@ const submitSchema = z.object({
   language: z.enum(["javascript", "python", "cpp", "java"]),
 });
 
+// ─── AI Commentary (Groq) ────────────────
+const GROQ_API_KEY = process.env.GROQ_API_KEY ?? "";
+const GROQ_MODEL = "llama-3.3-70b-versatile";
+
+async function generateLiveCommentary(verdict: Verdict, testsPassed: number, testsTotal: number, language: string): Promise<string> {
+  try {
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${GROQ_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: GROQ_MODEL,
+        max_tokens: 80,
+        messages: [
+          {
+            role: "system",
+            content: "You are a hyped esports commentator for competitive coding. Generate ONE punchy, encouraging line (under 15 words) in response to a code verdict. Be technical, be excited!",
+          },
+          {
+            role: "user",
+            content: `${language.toUpperCase()} Submission - ${verdict.toUpperCase()}: ${testsPassed}/${testsTotal} test cases. Comment:`,
+          },
+        ],
+      }),
+    });
+
+    if (!res.ok) return generateFallbackCommentary(verdict, testsPassed, testsTotal);
+
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content ?? generateFallbackCommentary(verdict, testsPassed, testsTotal);
+  } catch (err) {
+    console.error("[AI Commentary error]", err);
+    return generateFallbackCommentary(verdict, testsPassed, testsTotal);
+  }
+}
+
+function generateFallbackCommentary(verdict: Verdict, testsPassed: number, testsTotal: number): string {
+  const comments: Record<Verdict, string[]> = {
+    accepted: ["Perfect! Flawless execution!", "Brilliant solution!", "You nailed it!"],
+    wrong_answer: ["Logic issue detected. Reconsider edge cases.", "Wrong output. Check your algorithm.", "Output mismatch. Debug carefully."],
+    time_limit_exceeded: ["Too slow! Optimize your approach.", "TLE - need a faster algorithm.", "Performance issue. Consider DP or greedy."],
+    runtime_error: ["Runtime crash. Watch for null/bounds.", "Error in execution. Debug inputs.", "Runtime issue. Check edge cases."],
+    compilation_error: ["Fix syntax errors first.", "Compilation failed. Check syntax.", "Code won't compile. Verify syntax."],
+    pending: ["Submission queued...", "Evaluating your code...", "Processing..."],
+  };
+
+  const pool = comments[verdict] || comments["pending"];
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
 // ─── ELO ─────────────────────────────────
 function calculateElo(winnerElo: number, loserElo: number, kFactor = 32) {
   const expectedWinner = 1 / (1 + Math.pow(10, (loserElo - winnerElo) / 400));
@@ -222,6 +274,25 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
         isFinal: judgeResult.verdict === "accepted",
       })
       .returning();
+
+    // ─── Generate and broadcast live AI commentary ────────────────────────
+    const commentary = await generateLiveCommentary(
+      judgeResult.verdict,
+      judgeResult.testCasesPassed,
+      judgeResult.testCasesTotal,
+      language
+    );
+
+    const { broadcastAiComment } = await import("../index");
+    broadcastAiComment(matchId, commentary);
+
+    // Save commentary as match event
+    await db.insert(matchEvents).values({
+      matchId,
+      userId: null,
+      eventType: "ai_comment",
+      payload: { comment: commentary, verdict: judgeResult.verdict },
+    });
 
     res.status(201).json(submission);
   } catch (err) {

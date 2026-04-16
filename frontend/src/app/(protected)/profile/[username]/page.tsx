@@ -217,6 +217,43 @@ export default function ProfilePage() {
           </Card>
         </section>
 
+        {/* Achievements/Badges */}
+        {stats && stats.totalMatches > 0 && (
+          <Card className="lg:col-span-3">
+            <h2 className="font-semibold mb-3">Achievements</h2>
+            <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
+              {stats.wins > 0 && (
+                <div className="rounded-lg border border-yellow-600 bg-yellow-900/20 p-3 text-center">
+                  <p className="text-2xl font-bold text-yellow-300">✦</p>
+                  <p className="text-xs font-semibold mt-1">First Victory</p>
+                  <p className="text-xs text-muted">{stats.wins} wins</p>
+                </div>
+              )}
+              {Number(winRate) >= 50 && stats.totalMatches >= 5 && (
+                <div className="rounded-lg border border-green-600 bg-green-900/20 p-3 text-center">
+                  <p className="text-2xl font-bold text-green-300">▲</p>
+                  <p className="text-xs font-semibold mt-1">Consistent</p>
+                  <p className="text-xs text-muted">{winRate}% win rate</p>
+                </div>
+              )}
+              {stats.topicStats && stats.topicStats.some(t => t.wins > 3) && (
+                <div className="rounded-lg border border-purple-600 bg-purple-900/20 p-3 text-center">
+                  <p className="text-2xl font-bold text-purple-300">◆</p>
+                  <p className="text-xs font-semibold mt-1">Specialist</p>
+                  <p className="text-xs text-muted">Master a topic</p>
+                </div>
+              )}
+              {stats.totalMatches >= 20 && (
+                <div className="rounded-lg border border-blue-600 bg-blue-900/20 p-3 text-center">
+                  <p className="text-2xl font-bold text-blue-300">●</p>
+                  <p className="text-xs font-semibold mt-1">Battle Veteran</p>
+                  <p className="text-xs text-muted">{stats.totalMatches} matches</p>
+                </div>
+              )}
+            </div>
+          </Card>
+        )}
+
         {/* Recent ELO Changes */}
         {recentEloHistory.length > 0 && (
           <Card className="lg:col-span-1">

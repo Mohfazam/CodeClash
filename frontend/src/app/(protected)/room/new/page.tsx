@@ -16,6 +16,10 @@ export default function NewRoomPage() {
   const [difficulty, setDifficulty] = useState<"easy" | "medium" | "hard">("medium");
   const [topic, setTopic] = useState("");
   const [timeLimit, setTimeLimit] = useState(30);
+  const [deadManSwitch, setDeadManSwitch] = useState(true);
+  const [blindRating, setBlindRating] = useState(false);
+  const [spectators, setSpectators] = useState(true);
+  const [liveCommentary, setLiveCommentary] = useState(true);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -33,10 +37,10 @@ export default function NewRoomPage() {
             difficulty,
             topic: topic || null,
             time_limit_minutes: timeLimit,
-            spectators_allowed: true,
-            live_commentator: true,
-            blind_rating: { enabled: false },
-            dead_mans_switch: { enabled: true, idle_seconds: 45 },
+            spectators_allowed: spectators,
+            live_commentator: liveCommentary,
+            blind_rating: { enabled: blindRating },
+            dead_mans_switch: { enabled: deadManSwitch, idle_seconds: 45 },
           },
         },
       });
@@ -85,6 +89,51 @@ export default function NewRoomPage() {
               onChange={(e) => setTimeLimit(Number(e.target.value))}
             />
           </label>
+
+          {/* Advanced Options */}
+          <div className="border-t border-border pt-3">
+            <p className="text-xs font-semibold text-muted mb-3">Advanced Options</p>
+            
+            <label className="flex items-center gap-2 text-sm mb-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={deadManSwitch}
+                onChange={(e) => setDeadManSwitch(e.target.checked)}
+                className="rounded border-border"
+              />
+              <span>Dead Man's Switch (auto-remove idle players)</span>
+            </label>
+
+            <label className="flex items-center gap-2 text-sm mb-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={blindRating}
+                onChange={(e) => setBlindRating(e.target.checked)}
+                className="rounded border-border"
+              />
+              <span>Blind Rating (hide opponent ELO)</span>
+            </label>
+
+            <label className="flex items-center gap-2 text-sm mb-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={liveCommentary}
+                onChange={(e) => setLiveCommentary(e.target.checked)}
+                className="rounded border-border"
+              />
+              <span>Live AI Commentary</span>
+            </label>
+
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={spectators}
+                onChange={(e) => setSpectators(e.target.checked)}
+                className="rounded border-border"
+              />
+              <span>Allow Spectators</span>
+            </label>
+          </div>
         </div>
         {error ? <p className="text-sm text-red-400">{error}</p> : null}
         <Button onClick={createRoom} disabled={loading}>

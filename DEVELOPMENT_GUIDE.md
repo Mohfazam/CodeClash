@@ -1,7 +1,7 @@
 # CodeClash - Comprehensive Development Documentation
 
-**Last Updated:** April 18, 2026  
-**Status:** Active Development  
+**Last Updated:** April 18, 2026 (v2.0 - Major Feature Release)  
+**Status:** Active Development - Hackathon Ready  
 **Team:** Lost Arc (Zainab Fatima, Mohd Sarwar Khan)
 
 ---
@@ -39,19 +39,22 @@
 
 ✅ User authentication with JWT tokens (7-day expiry)  
 ✅ Create/join rooms with code-based invites (6-character codes)  
-✅ Live match timer with remaining time display  
+✅ Live match timer with remaining time display (MM:SS, color-coded urgency)  
 ✅ Code editor with syntax awareness (LeetCode-style editor-first layout)  
-✅ Real-time opponent activity indicators  
-✅ AI-powered hints (non-spoiling suggestions)  
-✅ Live AI commentary during matches (strategic feedback)  
+✅ Real-time opponent activity indicators (typing, idle, submissions)  
+✅ AI-powered hints (non-spoiling suggestions in modal)  
+✅ **Live AI commentary during matches** (Groq-powered, real-time commentary stream)  
 ✅ Post-match complexity analysis (deferred until match ends)  
-✅ ELO calculation after each match  
-✅ Topic-specific performance stats  
-✅ Postgame debrief with detailed stats and insights  
+✅ ELO calculation after each match (K-factor: 32, Glicko-inspired)  
+✅ Topic-specific performance stats with last 5 match outcomes  
+✅ Postgame debrief with detailed insights and performance comparison  
 ✅ Problems browser with filtering by difficulty and topic  
-✅ Public user profiles  
+✅ Public user profiles with edit capabilities  
 ✅ Global leaderboard with pagination  
-✅ No emoji usage (professional clean styling)  
+✅ **Dead Man's Switch** (auto-remove idle players, visual warnings)  
+✅ **Room customization** (blind rating, spectators, time limit, difficulty, topic)  
+✅ **Achievement/Badge system** (First Victory, Consistent, Specialist, Battle Veteran)  
+✅ No emoji usage (professional, clean UI with styled badges/symbols)
 
 ---
 
@@ -985,9 +988,11 @@ io.use((socket, next) => {
 |-------|-----------|---------|---------|
 | `match:timer_tick` | Server | `{ remaining_ms: number }` | Timer update every 1s |
 | `match:opponent_typing` | Client | `{ match_id: string }` | Indicator when typing |
-| `match:idle_warning` | Server | `{ match_id: string }` | Alert after 45s idle |
-| `match:ended` | Server | `{ reason: string }` | Match finished |
-| `match:started` | Server | `{ match_id: string }` | Match began, redirect |
+| `match:ai_comment` | Server | `{ comment: string, timestamp: number }` | Live AI commentary (NEW) |
+| `match:idle_warning` | Server | `{ seconds_idle: number, seconds_until_delete: number }` | Alert after 45s idle |
+| `match:lines_deleted` | Server | `{ user_id: string, lines_deleted: number }` | Lines auto-deleted due to idle |
+| `match:ended` | Server | `{ reason: string, winner_id: string }` | Match finished |
+| `match:started` | Server | `{ match_id: string, problem: Problem }` | Match began |
 
 #### Code Events
 
@@ -1047,6 +1052,136 @@ const response = await groq.chat.completions.create({
 ```
 
 **Output:** JSON with time/space complexity and explanation
+
+### Live AI Commentary
+
+**Real-time match commentary** is generated automatically after each code submission. The system:
+
+1. **Triggers on Submission:**
+   - User submits code
+   - Backend judges code and generates verdict
+   - AI generates contextual commentary based on verdict
+   - Commentary is broadcast via Socket.IO to all match room participants
+
+2. **Commentary Generation (Backend):**
+   ```typescript
+   // POST /api/submissions (internal)
+   const commentary = await generateLiveCommentary(
+     verdict,           // "accepted" | "wrong_answer" | "timeout" | etc
+     testsPassed,       // number
+     testsTotal,        // number
+     language           // "javascript" | "python" | "cpp" | "java"
+   );
+   
+   broadcastAiComment(matchId, commentary);
+   ```
+
+3. **Groq Prompt:**
+   ```
+   System: "You are a hyped esports commentator for competitive coding. Generate ONE punchy, 
+   encouraging line (under 15 words) in response to a code verdict. Be technical, be excited!"
+   
+   User: "${language} Submission - ${verdict}: ${testsPassed}/${testsTotal} test cases. Comment:"
+   ```
+
+4. **Fallback Responses:**
+   - If Groq API is slow/unavailable, uses pre-crafted commentary pool
+   - Ensures real-time performance
+
+5. **Frontend Display:**
+   - Sidebar component receives Socket.IO event `match:ai_comment`
+   - Appends comment to rolling commentary list
+   - Shows latest comments prominently, older ones faded
+   - Scrolls automatically to newest comment
+
+**Example Comments:**
+- ✓ Accepted: "Perfect! Flawless execution!"
+- ✗ Wrong Answer: "Logic issue detected. Reconsider edge cases."
+- ⏱ Timeout: "Too slow! Optimize your approach."
+- 💥 Runtime Error: "Runtime crash. Watch for null/bounds."
+
+---
+
+## Advanced Features
+
+### Dead Man's Switch
+
+**Purpose:** Prevent idle players from indefinitely blocking matches.
+
+**Flow:**
+1. Player joins active match
+2. Server starts idle timer (45 seconds)
+3. On mouse/keyboard activity: timer resets
+4. After 45 seconds idle: `match:idle_warning` event emitted
+   - Frontend displays prominent red warning banner
+   - Shows countdown to line deletion (10 seconds)
+   - UI pulses to indicate urgency
+5. After 10 more seconds: 5 lines automatically deleted from player's code
+6. If player is still idle after auto-delete: match may be forfeited (configurable)
+
+**Backend Implementation:**
+```typescript
+function resetIdleTimer(matchId: string, userId: string) {
+  const key = `${matchId}:${userId}`;
+  
+  const warnTimer = setTimeout(() => {
+    io.to(matchId).emit("match:idle_warning", {
+      user_id: userId,
+      seconds_idle: 45,
+      seconds_until_delete: 10
+    });
+    
+    const deleteTimer = setTimeout(() => {
+      io.to(matchId).emit("match:lines_deleted", {
+        user_id: userId,
+        lines_deleted: 5
+      });
+    }, 10_000);
+  }, 45_000);
+}
+```
+
+**Frontend Visual Feedback:**
+- Red warning banner with animated pulse
+- Countdown timer showing seconds until deletion
+- Clear messaging: "5 lines will be deleted in Xs!"
+
+### Room Customization Options
+
+Players can configure rooms with:
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `difficulty` | string | "medium" | easy/medium/hard |
+| `topic` | string | null | specific topic or null (random) |
+| `time_limit_minutes` | number | 30 | 5-120 minutes |
+| `dead_mans_switch` | object | `{enabled: true, idle_seconds: 45}` | Auto-remove idle players |
+| `blind_rating` | object | `{enabled: false}` | Hide opponent ELO until match ends |
+| `wager` | object | `{enabled: false, amount: 0}` | Betting system (placeholder) |
+| `live_commentator` | boolean | true | Enable AI commentary |
+| `spectators_allowed` | boolean | true | Allow other users to watch |
+
+**Room Creation UI:**
+- Basic options: difficulty, topic, time limit
+- Advanced section: toggles for all room options
+- Room code automatically generated (6 chars, uppercase alphanumeric)
+
+### Achievements & Badges
+
+**Unlocked based on user statistics:**
+
+| Achievement | Requirement | Icon | Description |
+|-------------|-------------|------|-------------|
+| First Victory | `wins > 0` | ✦ | Won first match |
+| Consistent | `wins/total >= 50% AND total >= 5` | ▲ | Maintained 50%+ win rate |
+| Specialist | Any topic `wins > 3` | ◆ | Master specific topic |
+| Battle Veteran | `total_matches >= 20` | ● | Played 20+ matches |
+
+**Display Location:**
+- User profile page
+- Displayed as colored badges with borders
+- Yellow (Star) = Victory, Green (Triangle) = Consistency, Purple (Diamond) = Specialization, Blue (Circle) = Veteranship
+- Shows count/stat underneath badge
 
 ---
 
