@@ -7,7 +7,9 @@ import { Button } from "@/components/ui/button";
 
 const items = [
   { href: "/dashboard", label: "Dashboard" },
-  { href: "/room/new", label: "Create Room" },
+  { href: "/room/new", label: "Battle" },
+  { href: "/problems", label: "Problems" },
+  { href: "/leaderboard", label: "Leaderboard" },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -36,9 +38,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </nav>
         </div>
         <div className="flex items-center gap-3">
-          <p className="text-sm text-muted">
-            {user?.username} <span className="ml-1 text-foreground">ELO {user?.elo ?? 0}</span>
-          </p>
+          <Link href={`/profile/${user?.username}`} className="text-sm text-muted hover:text-foreground transition">
+            {user?.username} <span className="ml-1 text-foreground font-semibold">ELO {user?.elo ?? 0}</span>
+          </Link>
           <Button variant="outline" onClick={logout}>
             Logout
           </Button>
