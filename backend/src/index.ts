@@ -5,6 +5,7 @@ import { createServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
 import jwt from "jsonwebtoken";
 
+
 // Routes
 import authRouter from "./routes/auth";
 import roomsRouter from "./routes/rooms";
@@ -18,6 +19,7 @@ import aiRouter from "./routes/ai";
 const app = express();
 const httpServer = createServer(app);
 
+app.use(cors());
 // ─── Socket.io ────────────────────────────────────────────────────────────────
 export const io = new SocketIOServer(httpServer, {
   cors: {
