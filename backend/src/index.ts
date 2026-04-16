@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import { createServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
+import jwt from "jsonwebtoken";
 
 // Routes
 import authRouter from "./routes/auth";
@@ -22,34 +23,206 @@ export const io = new SocketIOServer(httpServer, {
   cors: {
     origin: process.env.CLIENT_URL ?? "http://localhost:5173",
     methods: ["GET", "POST"],
+    credentials: true,
   },
 });
 
+// ─── Socket JWT Auth Middleware ────────────────────────────────────────────────
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token as string | undefined;
+  if (!token) return next(new Error("auth_required"));
+
+  try {
+    const payload = jwt.verify(token, process.env.JWT_SECRET ?? "secret") as {
+      id: string;
+      username: string;
+      email: string;
+    };
+    socket.data.userId = payload.id;
+    socket.data.username = payload.username;
+    next();
+  } catch {
+    next(new Error("invalid_token"));
+  }
+});
+
+// ─── Dead Man's Switch state ──────────────────────────────────────────────────
+// key: `${matchId}:${userId}`
+const idleWarningTimers = new Map<string, NodeJS.Timeout>();
+const idleDeleteTimers = new Map<string, NodeJS.Timeout>();
+
+function clearIdleTimers(key: string) {
+  const wt = idleWarningTimers.get(key);
+  const dt = idleDeleteTimers.get(key);
+  if (wt) { clearTimeout(wt); idleWarningTimers.delete(key); }
+  if (dt) { clearTimeout(dt); idleDeleteTimers.delete(key); }
+}
+
+function resetIdleTimer(matchId: string, userId: string) {
+  const key = `${matchId}:${userId}`;
+  clearIdleTimers(key);
+
+  const warnTimer = setTimeout(() => {
+    io.to(matchId).emit("match:idle_warning", {
+      user_id: userId,
+      seconds_idle: 45,
+      seconds_until_delete: 10,
+    });
+
+    const deleteTimer = setTimeout(() => {
+      io.to(matchId).emit("match:lines_deleted", {
+        user_id: userId,
+        lines_deleted: 5,
+      });
+      idleDeleteTimers.delete(key);
+    }, 10_000);
+
+    idleDeleteTimers.set(key, deleteTimer);
+    idleWarningTimers.delete(key);
+  }, 45_000);
+
+  idleWarningTimers.set(key, warnTimer);
+}
+
+// ─── Match Timer state ────────────────────────────────────────────────────────
+const matchIntervals = new Map<string, NodeJS.Timeout>();
+
+export function startMatchTimer(matchId: string, timeLimitMs: number) {
+  if (matchIntervals.has(matchId)) return; // already running
+
+  let remaining = timeLimitMs;
+
+  const interval = setInterval(() => {
+    remaining -= 1_000;
+    io.to(matchId).emit("match:timer_tick", { remaining_ms: remaining });
+
+    if (remaining <= 0) {
+      stopMatchTimer(matchId);
+      io.to(matchId).emit("match:ended", {
+        winner_id: null,
+        reason: "time_up",
+        elo_deltas: {},
+      });
+    }
+  }, 1_000);
+
+  matchIntervals.set(matchId, interval);
+  console.log(`[timer] started for match ${matchId} (${timeLimitMs / 60_000} min)`);
+}
+
+export function stopMatchTimer(matchId: string) {
+  const interval = matchIntervals.get(matchId);
+  if (interval) {
+    clearInterval(interval);
+    matchIntervals.delete(matchId);
+    console.log(`[timer] stopped for match ${matchId}`);
+  }
+}
+
+// ─── Socket connection handler ────────────────────────────────────────────────
 io.on("connection", (socket) => {
-  console.log(`[socket] connected: ${socket.id}`);
+  const userId: string = socket.data.userId;
+  const username: string = socket.data.username;
 
-  socket.on("join_room", (roomCode: string) => {
-    socket.join(roomCode);
-    console.log(`[socket] ${socket.id} joined room ${roomCode}`);
+  console.log(`[socket] connected: ${socket.id} (user: ${username})`);
+
+  // ── Room events ────────────────────────────────────────────────────────────
+
+  socket.on("room:join", ({ room_code }: { room_code: string }) => {
+    socket.join(room_code);
+    console.log(`[socket] ${username} joined room ${room_code}`);
   });
 
-  socket.on("leave_room", (roomCode: string) => {
-    socket.leave(roomCode);
+  socket.on("room:leave", ({ room_code }: { room_code: string }) => {
+    socket.leave(room_code);
   });
 
-  // Relay code changes to opponent (live cursor/code sync)
-  socket.on("code_change", (data: { roomCode: string; code: string; language: string; userId: string }) => {
-    socket.to(data.roomCode).emit("opponent_code_change", {
-      code: data.code,
-      language: data.language,
-      userId: data.userId,
+  // ── Match events ───────────────────────────────────────────────────────────
+
+  // Opponent typing indicator (debounced on client side)
+  socket.on("code:update", ({ match_id }: { match_id: string; code_length: number; cursor_line: number }) => {
+    socket.to(match_id).emit("match:opponent_typing", {
+      is_typing: true,
+      user_id: userId,
     });
   });
 
+  // Legacy relay — keep for backward compat
+  socket.on(
+    "code_change",
+    (data: { roomCode: string; code: string; language: string; userId: string }) => {
+      socket.to(data.roomCode).emit("opponent_code_change", {
+        code: data.code,
+        language: data.language,
+        userId: data.userId,
+      });
+    }
+  );
+
+  // ── Dead Man's Switch heartbeat ────────────────────────────────────────────
+  socket.on("idle:heartbeat", ({ match_id }: { match_id: string }) => {
+    if (!match_id) return;
+    resetIdleTimer(match_id, userId);
+  });
+
+  // ── Surrender via socket (alternative to REST) ─────────────────────────────
+  socket.on("match:surrender", ({ match_id }: { match_id: string }) => {
+    socket.to(match_id).emit("match:opponent_surrendered", { user_id: userId });
+  });
+
+  // ── Spectator join notification ────────────────────────────────────────────
+  socket.on("spectator:join", ({ match_id }: { match_id: string }) => {
+    socket.join(match_id);
+    socket.to(match_id).emit("match:spectator_joined", { username });
+  });
+
+  // ── Disconnect cleanup ─────────────────────────────────────────────────────
   socket.on("disconnect", () => {
-    console.log(`[socket] disconnected: ${socket.id}`);
+    console.log(`[socket] disconnected: ${socket.id} (user: ${username})`);
+    // Clean up any idle timers for this user across all matches
+    for (const key of idleWarningTimers.keys()) {
+      if (key.endsWith(`:${userId}`)) clearIdleTimers(key);
+    }
   });
 });
+
+// ─── Helper: broadcast submission result to a match room ─────────────────────
+export function broadcastSubmissionResult(
+  matchId: string,
+  payload: {
+    user_id: string;
+    verdict: string;
+    test_cases_passed: number;
+    test_cases_total: number;
+    runtime_ms: number;
+  }
+) {
+  io.to(matchId).emit("match:submission_result", payload);
+
+  if (payload.verdict === "accepted") {
+    io.to(matchId).emit("match:opponent_accepted", {
+      user_id: payload.user_id,
+    });
+  }
+}
+
+// ─── Helper: broadcast match ended ───────────────────────────────────────────
+export function broadcastMatchEnded(
+  matchId: string,
+  payload: {
+    winner_id: string | null;
+    reason: "accepted" | "surrender" | "time_up";
+    elo_deltas: Record<string, number>;
+  }
+) {
+  stopMatchTimer(matchId);
+  io.to(matchId).emit("match:ended", payload);
+}
+
+// ─── Helper: broadcast AI commentary ─────────────────────────────────────────
+export function broadcastAiComment(matchId: string, comment: string) {
+  io.to(matchId).emit("match:ai_comment", { comment, timestamp: Date.now() });
+}
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
 app.use(cors({ origin: process.env.CLIENT_URL ?? "http://localhost:5173", credentials: true }));
@@ -90,11 +263,11 @@ httpServer.listen(PORT, () => {
   console.log(`   Health      GET  /health`);
   console.log(`   Auth        POST /api/auth/register | /login | GET /me`);
   console.log(`   Rooms       POST /api/rooms | GET /:code | POST /:code/join | /:code/start`);
-  console.log(`   Matches     GET  /api/matches/:id | /history | POST /:id/surrender`);
+  console.log(`   Matches     GET  /api/matches/:id | /history | GET /:id/debrief | POST /:id/surrender`);
   console.log(`   Submissions POST /api/submissions | GET /match/:matchId`);
   console.log(`   Problems    GET  /api/problems | /random | /:slug`);
   console.log(`   Users       GET  /api/users/:username | PATCH /me | GET /me/stats`);
   console.log(`   Leaderboard GET  /api/leaderboard`);
-  console.log(`   AI          POST /api/ai/hint | /analyze | /comment | /autopsy`);
-  console.log(`\n   Socket.io ready\n`);
+  console.log(`   AI          POST /api/ai/hint | /analyze | /roast | /comment | /autopsy | /complexity`);
+  console.log(`\n   Socket.io ready (JWT auth required)\n`);
 });
