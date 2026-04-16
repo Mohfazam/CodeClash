@@ -65,9 +65,9 @@ export default function RoomPage() {
     const socket = getSocket(token);
     socket.emit("room:join", { room_code: code });
 
-    socket.on("room:guest_joined", () => {
-      setStatus("Guest joined. Ready to start.");
-      setRoom((prev) => (prev ? { ...prev, status: "ready" } : prev));
+    socket.on("room:guest_joined", (data: { guest: { id: string; username: string; elo: number } }) => {
+      setStatus("Guest joined. Ready to start!");
+      setRoom((prev) => prev ? { ...prev, status: "ready", guestId: data.guest?.id ?? prev.guestId, guest: data.guest ?? prev.guest } : prev);
     });
     socket.on("room:countdown", ({ seconds }: { seconds: number }) => setCountdown(seconds));
     socket.on("match:started", ({ match_id }: { match_id: string }) => {
@@ -76,6 +76,14 @@ export default function RoomPage() {
     socket.on("match:join_room", ({ match_id }: { match_id: string }) => {
       socket.emit("room:join", { room_code: match_id });
     });
+    socket.on("room:options_updated", ({ options }: { options: Room["options"] }) => {
+      setRoom((prev) => prev ? { ...prev, options } : prev);
+      setStatus("Room options updated.");
+    });
+    socket.on("room:closed", () => {
+      setError("The host closed this room.");
+      setTimeout(() => router.push("/dashboard"), 2000);
+    });
 
     return () => {
       socket.emit("room:leave", { room_code: code });
@@ -83,6 +91,8 @@ export default function RoomPage() {
       socket.off("room:countdown");
       socket.off("match:started");
       socket.off("match:join_room");
+      socket.off("room:options_updated");
+      socket.off("room:closed");
     };
   }, [token, code, router]);
 

@@ -283,7 +283,17 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
       language
     );
 
-    const { broadcastAiComment } = await import("../index");
+    const { broadcastAiComment, broadcastSubmissionResult, broadcastMatchEnded } = await import("../index");
+
+    // Broadcast submission result to both players in the match room
+    broadcastSubmissionResult(matchId, {
+      user_id: userId,
+      verdict: judgeResult.verdict,
+      test_cases_passed: judgeResult.testCasesPassed,
+      test_cases_total: judgeResult.testCasesTotal,
+      runtime_ms: judgeResult.runtimeMs,
+    });
+
     broadcastAiComment(matchId, commentary);
 
     // Save commentary as match event
@@ -294,6 +304,62 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
       payload: { comment: commentary, verdict: judgeResult.verdict },
     });
 
+    // ─── If accepted → end match, update ELO, topic stats ─────────────────────
+    if (judgeResult.verdict === "accepted") {
+      const winnerId = userId;
+      const loserId = match.player1Id === userId ? match.player2Id : match.player1Id;
+
+      // Mark match as finished
+      await db
+        .update(matches)
+        .set({ status: "finished", winnerId, endedAt: new Date() })
+        .where(eq(matches.id, matchId));
+
+      // Update room status
+      await db
+        .update(rooms)
+        .set({ status: "done", updatedAt: new Date() })
+        .where(eq(rooms.id, match.roomId));
+
+      // Calculate and update ELO
+      const [winner] = await db.select({ elo: users.elo }).from(users).where(eq(users.id, winnerId)).limit(1);
+      const [loser] = await db.select({ elo: users.elo }).from(users).where(eq(users.id, loserId)).limit(1);
+
+      let eloDelta = { winnerDelta: 0, loserDelta: 0 };
+      if (winner && loser) {
+        eloDelta = calculateElo(winner.elo, loser.elo);
+        await db.update(users).set({ elo: winner.elo + eloDelta.winnerDelta }).where(eq(users.id, winnerId));
+        await db.update(users).set({ elo: loser.elo + eloDelta.loserDelta }).where(eq(users.id, loserId));
+
+        await db.insert(eloHistory).values([
+          { userId: winnerId, matchId, opponentId: loserId, oldElo: winner.elo, newElo: winner.elo + eloDelta.winnerDelta, delta: eloDelta.winnerDelta },
+          { userId: loserId, matchId, opponentId: winnerId, oldElo: loser.elo, newElo: loser.elo + eloDelta.loserDelta, delta: eloDelta.loserDelta },
+        ]);
+      }
+
+      // Record topic stats
+      const startedAt = match.startedAt ? new Date(match.startedAt).getTime() : null;
+      const winnerSolveMs = startedAt ? Date.now() - startedAt : null;
+      if (problem.topics?.length) {
+        await upsertTopicStats(winnerId, loserId, problem.topics, winnerSolveMs, null);
+      }
+
+      // Log match end event
+      await db.insert(matchEvents).values({
+        matchId,
+        userId: winnerId,
+        eventType: "match_end",
+        payload: { reason: "accepted", winner_id: winnerId },
+      });
+
+      // Broadcast match ended to both players
+      broadcastMatchEnded(matchId, {
+        winner_id: winnerId,
+        reason: "accepted",
+        elo_deltas: { [winnerId]: eloDelta.winnerDelta, [loserId]: eloDelta.loserDelta },
+      });
+    }
+
     res.status(201).json(submission);
   } catch (err) {
     console.error("[POST /submissions]", err);
@@ -301,4 +367,4 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-export default router;
+export default router;

@@ -8,17 +8,16 @@ import { apiRequest } from "@/lib/api";
 
 type LeaderboardEntry = {
   rank: number;
-  userId: string;
+  id: string;
   username: string;
   elo: number;
-  wins: number;
-  losses: number;
-  totalMatches: number;
+  metadata?: Record<string, unknown>;
 };
 
 type LeaderboardResponse = {
   leaderboard: LeaderboardEntry[];
-  total: number;
+  limit: number;
+  offset: number;
 };
 
 export default function LeaderboardPage() {
@@ -39,13 +38,18 @@ export default function LeaderboardPage() {
     })
       .then((res) => {
         setData(res.leaderboard);
-        setTotal(res.total);
+        // API doesn't return total; estimate from data length
+        if (res.leaderboard.length < limit) {
+          setTotal(offset + res.leaderboard.length);
+        } else {
+          setTotal(offset + res.leaderboard.length + 1);
+        }
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load leaderboard"))
       .finally(() => setLoading(false));
   }, [token, limit, offset]);
 
-  const pages = Math.ceil(total / limit);
+  const pages = Math.max(1, Math.ceil(total / limit));
   const currentPage = Math.floor(offset / limit) + 1;
 
   return (
@@ -69,25 +73,24 @@ export default function LeaderboardPage() {
                 <tr className="border-b border-border">
                   <th className="px-4 py-3 text-left font-semibold">Rank</th>
                   <th className="px-4 py-3 text-left font-semibold">Player</th>
-                  <th className="px-4 py-3 text-right font-semibold">ELO</th>
-                  <th className="px-4 py-3 text-right font-semibold">Wins</th>
-                  <th className="px-4 py-3 text-right font-semibold">Losses</th>
-                  <th className="px-4 py-3 text-right font-semibold">W/L Ratio</th>
+                  <th className="px-4 py-3 text-right font-semibold">ELO Rating</th>
                 </tr>
               </thead>
               <tbody>
                 {data.map((entry) => (
-                  <tr key={entry.userId} className="border-b border-border/50 hover:bg-surface-soft transition">
+                  <tr key={entry.id} className="border-b border-border/50 hover:bg-surface-soft transition">
                     <td className="px-4 py-3">
-                      <span className="font-semibold inline-block">
-                        {entry.rank === 1 && <span className="inline-block w-8 h-8 rounded-full bg-yellow-500/20 text-yellow-300 text-center leading-8 mr-2">1</span>}
-                        {entry.rank === 2 && <span className="inline-block w-8 h-8 rounded-full bg-gray-400/20 text-gray-300 text-center leading-8 mr-2">2</span>}
-                        {entry.rank === 3 && <span className="inline-block w-8 h-8 rounded-full bg-orange-600/20 text-orange-300 text-center leading-8 mr-2">3</span>}
-                        #{entry.rank}
+                      <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full font-bold text-sm mr-2 ${
+                        entry.rank === 1 ? "bg-yellow-500/20 text-yellow-300" :
+                        entry.rank === 2 ? "bg-gray-400/20 text-gray-300" :
+                        entry.rank === 3 ? "bg-orange-600/20 text-orange-300" :
+                        "bg-slate-700/20 text-gray-500"
+                      }`}>
+                        {entry.rank === 1 ? "🥇" : entry.rank === 2 ? "🥈" : entry.rank === 3 ? "🥉" : entry.rank}
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <Link href={`/profile/${entry.username}`} className="text-primary hover:underline">
+                      <Link href={`/profile/${entry.username}`} className="text-primary hover:underline font-medium">
                         {entry.username}
                       </Link>
                     </td>
@@ -95,11 +98,6 @@ export default function LeaderboardPage() {
                       <span className="inline-block px-3 py-1 rounded-full bg-primary/20 text-primary font-semibold">
                         {entry.elo}
                       </span>
-                    </td>
-                    <td className="px-4 py-3 text-right text-green-400">{entry.wins}</td>
-                    <td className="px-4 py-3 text-right text-red-400">{entry.losses}</td>
-                    <td className="px-4 py-3 text-right text-muted">
-                      {entry.totalMatches > 0 ? `${(entry.wins / entry.totalMatches * 100).toFixed(1)}%` : "—"}
                     </td>
                   </tr>
                 ))}

@@ -56,13 +56,20 @@ export default function ProfilePage() {
   useEffect(() => {
     if (!token) return;
     setLoading(true);
+    // For stats, use /me/stats for own profile, otherwise public profile has topicStats
+    const statsPath = user?.username === username ? "/api/users/me/stats" : null;
     Promise.all([
       apiRequest<UserProfile>({ path: `/api/users/${username}`, token }),
-      apiRequest<UserStats>({ path: `/api/users/${username}/stats`, token }),
+      statsPath ? apiRequest<UserStats>({ path: statsPath, token }) : Promise.resolve(null as unknown as UserStats),
     ])
       .then(([profileData, statsData]) => {
         setProfile(profileData);
-        setStats(statsData);
+        // For own profile, use stats endpoint; for others, build from topicStats in profile
+        if (statsData) {
+          setStats(statsData);
+        } else {
+          setStats({ wins: 0, losses: 0, totalMatches: 0, eloHistory: [], topicStats: (profileData as any).topicStats ?? [] });
+        }
         setEditData({
           bio: profileData.metadata?.bio || "",
           college: profileData.metadata?.college || "",
@@ -71,24 +78,22 @@ export default function ProfilePage() {
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load profile"))
       .finally(() => setLoading(false));
-  }, [token, username]);
+  }, [token, username, user?.username]);
 
   const handleSaveProfile = async () => {
     if (!token || !isOwnProfile) return;
     setSaving(true);
     try {
+      // API expects bio, college, avatar_url directly (not nested)
       await apiRequest({
         path: "/api/users/me",
         method: "PATCH",
         token,
-        body: { metadata: editData },
+        body: editData,
       });
       setProfile((prev) =>
         prev
-          ? {
-              ...prev,
-              metadata: { ...prev.metadata, ...editData },
-            }
+          ? { ...prev, metadata: { ...prev.metadata, ...editData } }
           : null
       );
       setIsEditing(false);
