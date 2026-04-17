@@ -4,268 +4,205 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { apiRequest } from "@/lib/api";
+import { Problem } from "@/lib/types";
 
-type Problem = {
-  id: string;
-  title: string;
-  difficulty: "easy" | "medium" | "hard";
-  topics: string[];
-  description: string;
-  constraints: string;
-  examples: Array<{
-    input: string;
-    output: string;
-    explanation?: string;
-  }>;
-  acceptanceRate?: number;
-  attemptCount?: number;
-};
-
-type ProblemsResponse = {
+type ProblemListResponse = {
   problems: Problem[];
   total: number;
+  limit: number;
+  offset: number;
 };
-
-const DIFFICULTIES = ["easy", "medium", "hard"];
-const TOPICS = [
-  "Arrays",
-  "Strings",
-  "Trees",
-  "Graphs",
-  "Hashing",
-  "Sorting",
-  "Dynamic Programming",
-  "Recursion",
-  "Stacks",
-  "Queues",
-  "Linked Lists",
-  "Binary Search",
-];
 
 export default function ProblemsPage() {
   const { token } = useAuth();
   const [problems, setProblems] = useState<Problem[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  // Filters
+  const [difficulty, setDifficulty] = useState("");
+  const [topic, setTopic] = useState("");
   const [search, setSearch] = useState("");
-  const [selectedDifficulty, setSelectedDifficulty] = useState<string | null>(null);
-  const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
-  const [limit, setLimit] = useState(20);
+  const [limit] = useState(20);
   const [offset, setOffset] = useState(0);
-  const [total, setTotal] = useState(0);
 
   useEffect(() => {
     if (!token) return;
     setLoading(true);
 
-    const params = new URLSearchParams();
-    params.append("limit", limit.toString());
-    params.append("offset", offset.toString());
-    if (search) params.append("search", search);
-    if (selectedDifficulty) params.append("difficulty", selectedDifficulty);
-    if (selectedTopic) params.append("topic", selectedTopic);
+    let path = `/api/problems?limit=${limit}&offset=${offset}`;
+    if (difficulty) path += `&difficulty=${difficulty}`;
+    if (topic) path += `&topic=${topic}`;
 
-    apiRequest<ProblemsResponse>({
-      path: `/api/problems?${params.toString()}`,
-      token,
-    })
+    apiRequest<ProblemListResponse>({ path, token })
       .then((res) => {
         setProblems(res.problems);
         setTotal(res.total);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load problems"))
       .finally(() => setLoading(false));
-  }, [token, search, selectedDifficulty, selectedTopic, limit, offset]);
+  }, [token, difficulty, topic, offset, limit]);
 
-  const pages = Math.ceil(total / limit);
+  const filteredProblems = search
+    ? problems.filter((p) =>
+        p.title.toLowerCase().includes(search.toLowerCase()) ||
+        p.topics.some((t) => t.toLowerCase().includes(search.toLowerCase()))
+      )
+    : problems;
+
+  const handleRandomProblem = async () => {
+    if (!token) return;
+    try {
+      let path = "/api/problems/random";
+      if (difficulty) path += `?difficulty=${difficulty}`;
+      const problem = await apiRequest<Problem>({ path, token });
+      window.location.href = `/problems/${problem.slug}`;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No problems found");
+    }
+  };
+
+  const pages = Math.max(1, Math.ceil(total / limit));
   const currentPage = Math.floor(offset / limit) + 1;
 
-  const getDifficultyColor = (difficulty: string) => {
-    switch (difficulty) {
-      case "easy":
-        return "bg-green-900/30 text-green-300 border-green-600";
-      case "medium":
-        return "bg-yellow-900/30 text-yellow-300 border-yellow-600";
-      case "hard":
-        return "bg-red-900/30 text-red-300 border-red-600";
-      default:
-        return "bg-gray-900/30 text-gray-300 border-gray-600";
+  const difficultyColor = (d: string) => {
+    switch (d) {
+      case "easy": return "bg-green-900/40 text-green-300 border-green-700/30";
+      case "medium": return "bg-yellow-900/40 text-yellow-300 border-yellow-700/30";
+      case "hard": return "bg-red-900/40 text-red-300 border-red-700/30";
+      default: return "bg-gray-900/40 text-gray-300";
     }
   };
 
   return (
     <main className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Problem Browser</h1>
-        <p className="text-sm text-muted mt-1">Explore and practice coding problems</p>
-      </div>
-
-      {/* Filters */}
-      <div className="rounded-lg border border-border bg-surface p-4 space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <label className="text-sm font-semibold text-muted block mb-2">Search</label>
-          <Input
-            type="text"
-            placeholder="Search by problem title..."
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setOffset(0);
-            }}
-          />
+          <h1 className="text-3xl font-bold">Problems</h1>
+          <p className="text-muted text-sm mt-1">{total} problems available</p>
         </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="text-sm font-semibold text-muted block mb-2">Difficulty</label>
-            <div className="flex gap-2 flex-wrap">
-              <button
-                onClick={() => {
-                  setSelectedDifficulty(null);
-                  setOffset(0);
-                }}
-                className={`px-3 py-1.5 rounded border text-sm transition ${
-                  selectedDifficulty === null
-                    ? "bg-primary text-white border-primary"
-                    : "border-border text-muted hover:text-foreground"
-                }`}
-              >
-                All
-              </button>
-              {DIFFICULTIES.map((diff) => (
-                <button
-                  key={diff}
-                  onClick={() => {
-                    setSelectedDifficulty(diff);
-                    setOffset(0);
-                  }}
-                  className={`px-3 py-1.5 rounded border text-sm transition capitalize ${
-                    selectedDifficulty === diff
-                      ? `${getDifficultyColor(diff)} border-current`
-                      : "border-border text-muted hover:text-foreground"
-                  }`}
-                >
-                  {diff}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label className="text-sm font-semibold text-muted block mb-2">Topic</label>
-            <select
-              value={selectedTopic || ""}
-              onChange={(e) => {
-                setSelectedTopic(e.target.value || null);
-                setOffset(0);
-              }}
-              className="w-full rounded border border-border bg-surface-soft px-3 py-1.5 text-sm"
-            >
-              <option value="">All Topics</option>
-              {TOPICS.map((topic) => (
-                <option key={topic} value={topic}>
-                  {topic}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+        <Button
+          onClick={handleRandomProblem}
+          className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500"
+        >
+          🎲 Random Problem
+        </Button>
       </div>
 
       {error && <div className="rounded-lg border border-red-800 bg-red-950 p-3 text-sm text-red-200">{error}</div>}
 
-      {/* Problems List */}
-      {loading ? (
-        <Card className="py-12 text-center text-muted">Loading problems...</Card>
-      ) : problems.length === 0 ? (
-        <Card className="py-12 text-center text-muted">No problems found</Card>
-      ) : (
-        <>
-          <div className="space-y-3">
-            {problems.map((problem) => (
-              <Link
-                key={problem.id}
-                href={`/problems/${problem.id}`}
-                className="block"
-              >
-                <Card className="p-4 hover:bg-surface-soft transition cursor-pointer">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <h3 className="font-semibold text-foreground">{problem.title}</h3>
-                        <span className={`text-xs px-2 py-1 rounded border ${getDifficultyColor(problem.difficulty)}`}>
-                          {problem.difficulty.charAt(0).toUpperCase() + problem.difficulty.slice(1)}
-                        </span>
-                      </div>
-                      <p className="text-sm text-muted line-clamp-2">{problem.description}</p>
-                      <div className="flex items-center gap-2 mt-3 flex-wrap">
-                        {problem.topics.slice(0, 3).map((topic) => (
-                          <span key={topic} className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary">
-                            {topic}
-                          </span>
-                        ))}
-                        {problem.topics.length > 3 && (
-                          <span className="text-xs text-muted">+{problem.topics.length - 3} more</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="text-right whitespace-nowrap">
-                      {problem.acceptanceRate !== undefined && (
-                        <p className="text-sm text-muted">{Math.round(problem.acceptanceRate * 100)}%</p>
-                      )}
-                      {problem.attemptCount !== undefined && (
-                        <p className="text-xs text-muted/70">{problem.attemptCount} attempts</p>
-                      )}
-                    </div>
-                  </div>
-                </Card>
-              </Link>
-            ))}
-          </div>
+      {/* Filters */}
+      <div className="flex gap-3 flex-wrap items-center">
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search problems..."
+          className="max-w-xs"
+        />
 
-          {/* Pagination */}
-          <div className="flex items-center justify-between gap-4 pt-6">
-            <div className="text-sm text-muted">
-              Showing {offset + 1}–{Math.min(offset + limit, total)} of {total}
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setOffset(Math.max(0, offset - limit))}
-                disabled={offset === 0}
-                className="px-3 py-1 rounded border border-border disabled:opacity-50 hover:bg-surface-soft"
-              >
-                ← Previous
-              </button>
-              <span className="text-sm text-muted">
-                Page {currentPage} of {pages}
-              </span>
-              <button
-                onClick={() => setOffset(offset + limit)}
-                disabled={currentPage >= pages}
-                className="px-3 py-1 rounded border border-border disabled:opacity-50 hover:bg-surface-soft"
-              >
-                Next →
-              </button>
-            </div>
-            <div className="text-sm text-muted">
-              Show:
-              <select
-                value={limit}
-                onChange={(e) => {
-                  setLimit(Number(e.target.value));
-                  setOffset(0);
-                }}
-                className="ml-2 rounded border border-border bg-surface-soft px-2 py-1 text-sm"
-              >
-                <option value={10}>10</option>
-                <option value={20}>20</option>
-                <option value={50}>50</option>
-              </select>
-            </div>
+        <div className="flex gap-1.5">
+          {["", "easy", "medium", "hard"].map((d) => (
+            <button
+              key={d}
+              onClick={() => { setDifficulty(d); setOffset(0); }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
+                difficulty === d
+                  ? d === "" ? "bg-primary text-white border-primary" : difficultyColor(d)
+                  : "bg-transparent text-gray-400 border-border hover:border-gray-500"
+              } ${difficulty === d && d !== "" ? "ring-1 ring-current" : ""}`}
+            >
+              {d === "" ? "All" : d.charAt(0).toUpperCase() + d.slice(1)}
+            </button>
+          ))}
+        </div>
+
+        <Input
+          value={topic}
+          onChange={(e) => { setTopic(e.target.value); setOffset(0); }}
+          placeholder="Filter by topic..."
+          className="max-w-[160px]"
+        />
+      </div>
+
+      {/* Problem List */}
+      {loading ? (
+        <div className="space-y-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="skeleton h-20 rounded-2xl" />
+          ))}
+        </div>
+      ) : filteredProblems.length === 0 ? (
+        <Card className="py-8 text-center text-muted">
+          <p className="text-lg mb-2">📚</p>
+          <p>No problems found</p>
+        </Card>
+      ) : (
+        <div className="space-y-2">
+          {filteredProblems.map((problem) => (
+            <Link key={problem.id} href={`/problems/${problem.slug}`}>
+              <Card className="p-4 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5 transition-all cursor-pointer group flex items-center justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-3 mb-1.5">
+                    <h2 className="font-semibold text-white group-hover:text-primary-soft transition truncate">
+                      {problem.title}
+                    </h2>
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full border shrink-0 ${difficultyColor(problem.difficulty)}`}>
+                      {problem.difficulty}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {problem.topics?.slice(0, 4).map((t) => (
+                      <span key={t} className="text-xs bg-slate-800 text-gray-400 px-2 py-0.5 rounded-full">
+                        {t}
+                      </span>
+                    ))}
+                    {problem.companyTags?.slice(0, 2).map((t) => (
+                      <span key={t} className="text-xs bg-cyan-900/20 text-cyan-400 px-2 py-0.5 rounded-full">
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div className="shrink-0 text-xs text-primary opacity-0 group-hover:opacity-100 transition font-medium">
+                  Solve →
+                </div>
+              </Card>
+            </Link>
+          ))}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {total > limit && (
+        <div className="flex items-center justify-between gap-4 pt-4">
+          <p className="text-xs text-muted">
+            Showing {offset + 1}–{Math.min(offset + limit, total)} of {total}
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setOffset(Math.max(0, offset - limit))}
+              disabled={offset === 0}
+              className="px-3 py-1 rounded-lg border border-border text-sm disabled:opacity-50 hover:bg-surface-soft transition"
+            >
+              ← Prev
+            </button>
+            <span className="text-sm text-muted">
+              Page {currentPage} of {pages}
+            </span>
+            <button
+              onClick={() => setOffset(offset + limit)}
+              disabled={currentPage >= pages}
+              className="px-3 py-1 rounded-lg border border-border text-sm disabled:opacity-50 hover:bg-surface-soft transition"
+            >
+              Next →
+            </button>
           </div>
-        </>
+        </div>
       )}
     </main>
   );

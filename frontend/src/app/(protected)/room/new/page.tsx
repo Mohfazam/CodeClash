@@ -1,153 +1,272 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { apiRequest } from "@/lib/api";
 import { Room } from "@/lib/types";
+
+const TOPICS = ["arrays", "strings", "hashmaps", "trees", "graphs", "dp", "sorting", "math", "greedy", "two pointers"];
 
 export default function NewRoomPage() {
   const router = useRouter();
   const { token } = useAuth();
-  const [roomCode, setRoomCode] = useState("");
-  const [difficulty, setDifficulty] = useState<"easy" | "medium" | "hard">("medium");
-  const [topic, setTopic] = useState("");
-  const [timeLimit, setTimeLimit] = useState(30);
-  const [deadManSwitch, setDeadManSwitch] = useState(true);
-  const [blindRating, setBlindRating] = useState(false);
-  const [spectators, setSpectators] = useState(true);
-  const [liveCommentary, setLiveCommentary] = useState(true);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+
+  // Room options
+  const [difficulty, setDifficulty] = useState<"easy" | "medium" | "hard">("medium");
+  const [timeLimit, setTimeLimit] = useState(30);
+  const [liveCommentator, setLiveCommentator] = useState(true);
+  const [deadMansSwitch, setDeadMansSwitch] = useState(true);
+  const [idleSeconds, setIdleSeconds] = useState(120);
+  const [blindRating, setBlindRating] = useState(false);
+  const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
 
   const createRoom = async () => {
     if (!token) return;
-    setLoading(true);
+    setCreating(true);
     setError("");
+
     try {
       const room = await apiRequest<Room>({
         path: "/api/rooms",
         method: "POST",
         token,
         body: {
-          options: {
-            difficulty,
-            topic: topic || null,
-            time_limit_minutes: timeLimit,
-            spectators_allowed: spectators,
-            live_commentator: liveCommentary,
-            blind_rating: { enabled: blindRating },
-            dead_mans_switch: { enabled: deadManSwitch, idle_seconds: 45 },
-          },
+          difficulty,
+          time_limit_minutes: timeLimit,
+          topic: selectedTopic,
+          live_commentator: liveCommentator,
+          dead_mans_switch: { enabled: deadMansSwitch, idle_seconds: idleSeconds },
+          blind_rating: { enabled: blindRating },
         },
       });
       router.push(`/room/${room.roomCode}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create room");
     } finally {
-      setLoading(false);
+      setCreating(false);
     }
   };
 
-  const joinRoom = (e: FormEvent) => {
-    e.preventDefault();
-    if (!roomCode.trim()) return;
-    router.push(`/room/${roomCode.trim().toUpperCase()}`);
-  };
+  const difficultyOptions = [
+    { value: "easy", label: "Easy", emoji: "🟢", desc: "Good for warm-up", color: "border-green-500/50 bg-green-900/10 hover:bg-green-900/20", active: "ring-2 ring-green-500 bg-green-900/30" },
+    { value: "medium", label: "Medium", emoji: "🟡", desc: "Balanced challenge", color: "border-yellow-500/50 bg-yellow-900/10 hover:bg-yellow-900/20", active: "ring-2 ring-yellow-500 bg-yellow-900/30" },
+    { value: "hard", label: "Hard", emoji: "🔴", desc: "For the brave", color: "border-red-500/50 bg-red-900/10 hover:bg-red-900/20", active: "ring-2 ring-red-500 bg-red-900/30" },
+  ] as const;
+
+  const timeLimitOptions = [10, 15, 20, 30, 45, 60];
 
   return (
-    <main className="grid gap-4 md:grid-cols-2">
-      <Card className="space-y-4">
-        <h1 className="text-xl font-semibold">Create battle room</h1>
-        <div className="space-y-3">
-          <label className="block space-y-1 text-sm">
-            <span className="text-muted">Difficulty</span>
-            <select
-              value={difficulty}
-              onChange={(e) => setDifficulty(e.target.value as "easy" | "medium" | "hard")}
-              className="w-full rounded-lg border border-border bg-surface-soft px-3 py-2 outline-none"
+    <main className="max-w-3xl mx-auto space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold">Create Battle Room</h1>
+        <p className="text-muted text-sm mt-1">Configure your match settings and challenge an opponent</p>
+      </div>
+
+      {error && (
+        <div className="rounded-xl border border-red-800 bg-red-950 p-3 text-sm text-red-200">{error}</div>
+      )}
+
+      {/* Difficulty Selector */}
+      <section>
+        <h2 className="font-semibold text-lg mb-1">Difficulty</h2>
+        <p className="text-xs text-muted mb-4">Choose the problem difficulty for this battle</p>
+        <div className="grid gap-3 grid-cols-3">
+          {difficultyOptions.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setDifficulty(opt.value)}
+              className={`rounded-2xl border p-5 text-center transition-all ${
+                difficulty === opt.value ? opt.active : opt.color
+              }`}
             >
-              <option value="easy">Easy</option>
-              <option value="medium">Medium</option>
-              <option value="hard">Hard</option>
-            </select>
-          </label>
-          <label className="block space-y-1 text-sm">
-            <span className="text-muted">Topic (optional)</span>
-            <Input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="graphs, dp, arrays..." />
-          </label>
-          <label className="block space-y-1 text-sm">
-            <span className="text-muted">Time limit (minutes)</span>
-            <Input
-              type="number"
-              min={5}
-              max={120}
-              value={timeLimit}
-              onChange={(e) => setTimeLimit(Number(e.target.value))}
-            />
-          </label>
-
-          {/* Advanced Options */}
-          <div className="border-t border-border pt-3">
-            <p className="text-xs font-semibold text-muted mb-3">Advanced Options</p>
-            
-            <label className="flex items-center gap-2 text-sm mb-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={deadManSwitch}
-                onChange={(e) => setDeadManSwitch(e.target.checked)}
-                className="rounded border-border"
-              />
-              <span>Dead Man's Switch (auto-remove idle players)</span>
-            </label>
-
-            <label className="flex items-center gap-2 text-sm mb-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={blindRating}
-                onChange={(e) => setBlindRating(e.target.checked)}
-                className="rounded border-border"
-              />
-              <span>Blind Rating (hide opponent ELO)</span>
-            </label>
-
-            <label className="flex items-center gap-2 text-sm mb-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={liveCommentary}
-                onChange={(e) => setLiveCommentary(e.target.checked)}
-                className="rounded border-border"
-              />
-              <span>Live AI Commentary</span>
-            </label>
-
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input
-                type="checkbox"
-                checked={spectators}
-                onChange={(e) => setSpectators(e.target.checked)}
-                className="rounded border-border"
-              />
-              <span>Allow Spectators</span>
-            </label>
-          </div>
+              <span className="text-3xl block mb-2">{opt.emoji}</span>
+              <p className="font-bold text-white text-lg">{opt.label}</p>
+              <p className="text-xs text-muted mt-1">{opt.desc}</p>
+            </button>
+          ))}
         </div>
-        {error ? <p className="text-sm text-red-400">{error}</p> : null}
-        <Button onClick={createRoom} disabled={loading}>
-          {loading ? "Creating..." : "Create room"}
-        </Button>
-      </Card>
-      <Card className="space-y-4">
-        <h2 className="text-xl font-semibold">Join by room code</h2>
-        <form className="space-y-3" onSubmit={joinRoom}>
-          <Input value={roomCode} onChange={(e) => setRoomCode(e.target.value)} placeholder="ABC123" maxLength={6} />
-          <Button type="submit" variant="outline">
-            Open room
+      </section>
+
+      {/* Topic Picker */}
+      <section>
+        <h2 className="font-semibold text-lg mb-1">Topic (Optional)</h2>
+        <p className="text-xs text-muted mb-4">Filter problems by topic, or leave blank for random</p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setSelectedTopic(null)}
+            className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all ${
+              selectedTopic === null
+                ? "bg-primary text-white border-primary shadow-lg shadow-primary/20"
+                : "bg-transparent text-muted border-border hover:border-gray-500 hover:text-white"
+            }`}
+          >
+            🎲 Random
+          </button>
+          {TOPICS.map((topic) => (
+            <button
+              key={topic}
+              onClick={() => setSelectedTopic(topic)}
+              className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all capitalize ${
+                selectedTopic === topic
+                  ? "bg-primary text-white border-primary shadow-lg shadow-primary/20"
+                  : "bg-transparent text-muted border-border hover:border-gray-500 hover:text-white"
+              }`}
+            >
+              {topic}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {/* Time Limit */}
+      <section>
+        <h2 className="font-semibold text-lg mb-1">Time Limit</h2>
+        <p className="text-xs text-muted mb-4">How long each player gets to solve the problem</p>
+        <div className="flex flex-wrap gap-2">
+          {timeLimitOptions.map((t) => (
+            <button
+              key={t}
+              onClick={() => setTimeLimit(t)}
+              className={`px-5 py-2.5 rounded-xl text-sm font-bold border transition-all ${
+                timeLimit === t
+                  ? "bg-primary text-white border-primary shadow-lg shadow-primary/20"
+                  : "bg-transparent text-muted border-border hover:border-gray-500 hover:text-white"
+              }`}
+            >
+              {t} min
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {/* Advanced Options */}
+      <section className="space-y-3">
+        <h2 className="font-semibold text-lg mb-1">Battle Features</h2>
+        <p className="text-xs text-muted mb-4">Customize your battle experience</p>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          {/* Live Commentator */}
+          <button
+            onClick={() => setLiveCommentator(!liveCommentator)}
+            className={`rounded-2xl border p-4 text-left transition-all ${
+              liveCommentator
+                ? "border-cyan-500/40 bg-cyan-900/10 ring-2 ring-cyan-500/30"
+                : "border-border bg-surface-soft hover:border-gray-600"
+            }`}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-lg">🤖</span>
+              <div className={`w-10 h-5 rounded-full transition-all ${liveCommentator ? "bg-cyan-500" : "bg-gray-700"}`}>
+                <div className={`w-4 h-4 rounded-full bg-white shadow-sm transition-all mt-0.5 ${liveCommentator ? "ml-5" : "ml-0.5"}`} />
+              </div>
+            </div>
+            <p className="font-semibold text-white text-sm">AI Commentator</p>
+            <p className="text-xs text-muted mt-0.5">Live AI commentary during the match</p>
+          </button>
+
+          {/* Dead Man's Switch */}
+          <button
+            onClick={() => setDeadMansSwitch(!deadMansSwitch)}
+            className={`rounded-2xl border p-4 text-left transition-all ${
+              deadMansSwitch
+                ? "border-red-500/40 bg-red-900/10 ring-2 ring-red-500/30"
+                : "border-border bg-surface-soft hover:border-gray-600"
+            }`}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-lg">💀</span>
+              <div className={`w-10 h-5 rounded-full transition-all ${deadMansSwitch ? "bg-red-500" : "bg-gray-700"}`}>
+                <div className={`w-4 h-4 rounded-full bg-white shadow-sm transition-all mt-0.5 ${deadMansSwitch ? "ml-5" : "ml-0.5"}`} />
+              </div>
+            </div>
+            <p className="font-semibold text-white text-sm">Dead Man&apos;s Switch</p>
+            <p className="text-xs text-muted mt-0.5">Idle too long = code gets deleted</p>
+          </button>
+
+          {/* Blind Rating */}
+          <button
+            onClick={() => setBlindRating(!blindRating)}
+            className={`rounded-2xl border p-4 text-left transition-all ${
+              blindRating
+                ? "border-purple-500/40 bg-purple-900/10 ring-2 ring-purple-500/30"
+                : "border-border bg-surface-soft hover:border-gray-600"
+            }`}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-lg">🎭</span>
+              <div className={`w-10 h-5 rounded-full transition-all ${blindRating ? "bg-purple-500" : "bg-gray-700"}`}>
+                <div className={`w-4 h-4 rounded-full bg-white shadow-sm transition-all mt-0.5 ${blindRating ? "ml-5" : "ml-0.5"}`} />
+              </div>
+            </div>
+            <p className="font-semibold text-white text-sm">Blind Rating</p>
+            <p className="text-xs text-muted mt-0.5">Hide opponent identity until match ends</p>
+          </button>
+
+          {/* Idle Timer Config */}
+          {deadMansSwitch && (
+            <div className="rounded-2xl border border-border bg-surface-soft p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-lg">⏰</span>
+                <div>
+                  <p className="font-semibold text-white text-sm">Idle Threshold</p>
+                  <p className="text-xs text-muted">Seconds before idle penalty triggers</p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                {[60, 90, 120, 180].map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setIdleSeconds(s)}
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition ${
+                      idleSeconds === s
+                        ? "bg-primary text-white border-primary"
+                        : "bg-transparent text-muted border-border hover:border-gray-500"
+                    }`}
+                  >
+                    {s}s
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Preview & Create */}
+      <Card className="border-primary/20 bg-gradient-to-br from-surface to-surface-soft">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div>
+            <p className="text-xs text-muted uppercase tracking-wider mb-1.5">Battle Summary</p>
+            <div className="flex items-center gap-3 flex-wrap text-sm">
+              <span className={`px-2 py-0.5 rounded-full font-bold ${
+                difficulty === "easy" ? "bg-green-900/50 text-green-300" :
+                difficulty === "medium" ? "bg-yellow-900/50 text-yellow-300" :
+                "bg-red-900/50 text-red-300"
+              }`}>
+                {difficulty}
+              </span>
+              <span className="text-muted">·</span>
+              <span className="font-medium">{timeLimit} min</span>
+              <span className="text-muted">·</span>
+              <span className="capitalize">{selectedTopic ?? "random topic"}</span>
+              {liveCommentator && <span className="text-cyan-400 text-xs">🤖 AI ON</span>}
+              {deadMansSwitch && <span className="text-red-400 text-xs">💀 DMS ON</span>}
+              {blindRating && <span className="text-purple-400 text-xs">🎭 Blind</span>}
+            </div>
+          </div>
+          <Button
+            onClick={createRoom}
+            disabled={creating}
+            className="px-8 py-3 text-base font-bold bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 shadow-lg shadow-purple-500/20"
+          >
+            {creating ? "Creating..." : "⚔️ Create Room"}
           </Button>
-        </form>
+        </div>
       </Card>
     </main>
   );

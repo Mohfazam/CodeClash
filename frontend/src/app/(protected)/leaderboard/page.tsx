@@ -5,149 +5,150 @@ import Link from "next/link";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Card } from "@/components/ui/card";
 import { apiRequest } from "@/lib/api";
+import { getRankTier } from "@/lib/types";
 
 type LeaderboardEntry = {
-  rank: number;
   id: string;
   username: string;
   elo: number;
-  metadata?: Record<string, unknown>;
-};
-
-type LeaderboardResponse = {
-  leaderboard: LeaderboardEntry[];
-  limit: number;
-  offset: number;
+  wins?: number;
+  losses?: number;
+  totalMatches?: number;
 };
 
 export default function LeaderboardPage() {
-  const { token } = useAuth();
-  const [data, setData] = useState<LeaderboardEntry[]>([]);
+  const { token, user } = useAuth();
+  const [players, setPlayers] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [limit, setLimit] = useState(50);
-  const [offset, setOffset] = useState(0);
-  const [total, setTotal] = useState(0);
 
   useEffect(() => {
     if (!token) return;
     setLoading(true);
-    apiRequest<LeaderboardResponse>({
-      path: `/api/leaderboard?limit=${limit}&offset=${offset}`,
-      token,
-    })
-      .then((res) => {
-        setData(res.leaderboard);
-        // API doesn't return total; estimate from data length
-        if (res.leaderboard.length < limit) {
-          setTotal(offset + res.leaderboard.length);
-        } else {
-          setTotal(offset + res.leaderboard.length + 1);
-        }
-      })
+    apiRequest<LeaderboardEntry[]>({ path: "/api/leaderboard", token })
+      .then(setPlayers)
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load leaderboard"))
       .finally(() => setLoading(false));
-  }, [token, limit, offset]);
+  }, [token]);
 
-  const pages = Math.max(1, Math.ceil(total / limit));
-  const currentPage = Math.floor(offset / limit) + 1;
+  if (loading) {
+    return (
+      <main className="flex items-center justify-center py-20">
+        <div className="text-center space-y-3">
+          <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-muted">Loading leaderboard...</p>
+        </div>
+      </main>
+    );
+  }
+
+  const myRank = players.findIndex((p) => p.id === user?.id) + 1;
 
   return (
-    <main className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Global Leaderboard</h1>
-        <p className="text-sm text-muted">{total} players</p>
+    <main className="space-y-6 max-w-4xl mx-auto">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <h1 className="text-3xl font-bold">🏆 Leaderboard</h1>
+          <p className="text-muted text-sm mt-1">Top competitive coders ranked by ELO</p>
+        </div>
+        {myRank > 0 && (
+          <div className="px-4 py-2 rounded-2xl bg-gradient-to-r from-purple-900/30 to-cyan-900/30 border border-purple-500/20">
+            <p className="text-xs text-muted">Your Rank</p>
+            <p className="text-2xl font-black text-white">#{myRank}</p>
+          </div>
+        )}
       </div>
 
-      {error && <div className="rounded-lg border border-red-800 bg-red-950 p-3 text-sm text-red-200">{error}</div>}
+      {error && <div className="rounded-xl border border-red-800 bg-red-950 p-3 text-sm text-red-200">{error}</div>}
 
-      {loading ? (
-        <Card className="py-8 text-center text-muted">Loading leaderboard...</Card>
-      ) : data.length === 0 ? (
-        <Card className="py-8 text-center text-muted">No entries yet</Card>
-      ) : (
-        <>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="px-4 py-3 text-left font-semibold">Rank</th>
-                  <th className="px-4 py-3 text-left font-semibold">Player</th>
-                  <th className="px-4 py-3 text-right font-semibold">ELO Rating</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.map((entry) => (
-                  <tr key={entry.id} className="border-b border-border/50 hover:bg-surface-soft transition">
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full font-bold text-sm mr-2 ${
-                        entry.rank === 1 ? "bg-yellow-500/20 text-yellow-300" :
-                        entry.rank === 2 ? "bg-gray-400/20 text-gray-300" :
-                        entry.rank === 3 ? "bg-orange-600/20 text-orange-300" :
-                        "bg-slate-700/20 text-gray-500"
-                      }`}>
-                        {entry.rank === 1 ? "🥇" : entry.rank === 2 ? "🥈" : entry.rank === 3 ? "🥉" : entry.rank}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Link href={`/profile/${entry.username}`} className="text-primary hover:underline font-medium">
-                        {entry.username}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <span className="inline-block px-3 py-1 rounded-full bg-primary/20 text-primary font-semibold">
-                        {entry.elo}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {/* Top 3 podium */}
+      {players.length >= 3 && (
+        <div className="grid grid-cols-3 gap-4">
+          {/* 2nd place */}
+          <div className="mt-8">
+            <PodiumCard player={players[1]} rank={2} />
           </div>
+          {/* 1st place */}
+          <div>
+            <PodiumCard player={players[0]} rank={1} />
+          </div>
+          {/* 3rd place */}
+          <div className="mt-12">
+            <PodiumCard player={players[2]} rank={3} />
+          </div>
+        </div>
+      )}
 
-          {/* Pagination */}
-          <div className="flex items-center justify-between gap-4 pt-6">
-            <div className="text-sm text-muted">
-              Showing {offset + 1}–{Math.min(offset + limit, total)} of {total}
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setOffset(Math.max(0, offset - limit))}
-                disabled={offset === 0}
-                className="px-3 py-1 rounded border border-border disabled:opacity-50 hover:bg-surface-soft"
-              >
-                ← Previous
-              </button>
-              <span className="text-sm text-muted">
-                Page {currentPage} of {pages}
-              </span>
-              <button
-                onClick={() => setOffset(offset + limit)}
-                disabled={currentPage >= pages}
-                className="px-3 py-1 rounded border border-border disabled:opacity-50 hover:bg-surface-soft"
-              >
-                Next →
-              </button>
-            </div>
-            <div className="text-sm text-muted">
-              Show:
-              <select
-                value={limit}
-                onChange={(e) => {
-                  setLimit(Number(e.target.value));
-                  setOffset(0);
-                }}
-                className="ml-2 rounded border border-border bg-surface-soft px-2 py-1 text-sm"
-              >
-                <option value={10}>10</option>
-                <option value={25}>25</option>
-                <option value={50}>50</option>
-                <option value={100}>100</option>
-              </select>
-            </div>
-          </div>
-        </>
+      {/* Rest of the list */}
+      <div className="space-y-2">
+        {players.slice(3).map((player, i) => {
+          const rank = i + 4;
+          const tier = getRankTier(player.elo);
+          const isMe = player.id === user?.id;
+
+          return (
+            <Link key={player.id} href={`/profile/${player.username}`}>
+              <Card className={`flex items-center gap-4 py-3 px-4 hover:border-primary/30 transition cursor-pointer ${
+                isMe ? "ring-1 ring-primary/30 bg-primary/5" : ""
+              }`}>
+                <span className="w-8 text-center font-bold text-muted text-sm">{rank}</span>
+                <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${tier.color} flex items-center justify-center shrink-0`}>
+                  <span className="text-xs text-white font-bold">{tier.icon}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-white truncate">
+                    {player.username}
+                    {isMe && <span className="text-xs text-primary ml-2">(you)</span>}
+                  </p>
+                  <p className={`text-xs ${tier.textColor}`}>{tier.name}</p>
+                </div>
+                <div className="text-right">
+                  <p className={`text-lg font-black bg-gradient-to-r ${tier.color} bg-clip-text text-transparent`}>
+                    {player.elo}
+                  </p>
+                  {(player.wins !== undefined || player.totalMatches !== undefined) && (
+                    <p className="text-[10px] text-muted">
+                      {player.wins ?? 0}W / {player.losses ?? 0}L
+                    </p>
+                  )}
+                </div>
+              </Card>
+            </Link>
+          );
+        })}
+      </div>
+
+      {players.length === 0 && (
+        <Card className="py-8 text-center text-muted">
+          <p className="text-lg mb-2">🏆</p>
+          <p>No players yet. Be the first to compete!</p>
+        </Card>
       )}
     </main>
+  );
+}
+
+function PodiumCard({ player, rank }: { player: LeaderboardEntry; rank: number }) {
+  const tier = getRankTier(player.elo);
+  const medals = ["", "🥇", "🥈", "🥉"];
+  const heights = ["", "h-32", "h-24", "h-20"];
+  const glows = ["", "shadow-yellow-500/30", "shadow-gray-400/20", "shadow-orange-400/20"];
+
+  return (
+    <Link href={`/profile/${player.username}`}>
+      <div className={`rounded-2xl border border-slate-700/60 bg-gradient-to-b from-surface-soft to-surface p-5 text-center hover:border-primary/30 transition cursor-pointer shadow-lg ${glows[rank]}`}>
+        <div className="text-4xl mb-3">{medals[rank]}</div>
+        <div className={`w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br ${tier.color} flex items-center justify-center shadow-xl mb-3`}>
+          <span className="text-2xl text-white font-bold">{tier.icon}</span>
+        </div>
+        <p className="font-bold text-white text-lg truncate">{player.username}</p>
+        <p className={`text-sm font-semibold ${tier.textColor}`}>{tier.name}</p>
+        <p className={`text-2xl font-black mt-2 bg-gradient-to-r ${tier.color} bg-clip-text text-transparent`}>{player.elo}</p>
+        {player.wins !== undefined && (
+          <p className="text-xs text-muted mt-1">{player.wins}W / {player.losses ?? 0}L</p>
+        )}
+      </div>
+    </Link>
   );
 }

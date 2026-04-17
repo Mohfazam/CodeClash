@@ -96,11 +96,19 @@ router.get("/:id", requireAuth, async (req: Request, res: Response): Promise<voi
       .where(eq(users.id, match.player2Id))
       .limit(1);
 
+    // Fetch room options for time limit
+    const [room] = await db
+      .select({ options: rooms.options })
+      .from(rooms)
+      .where(eq(rooms.id, match.roomId))
+      .limit(1);
+
     res.json({
       ...match,
       problem: { ...problem, testCases: problem?.testCases?.filter((tc) => !tc.is_hidden) },
       player1: p1,
       player2: p2,
+      roomOptions: room?.options ?? {},
     });
   } catch (err) {
     console.error("[GET /matches/:id]", err);

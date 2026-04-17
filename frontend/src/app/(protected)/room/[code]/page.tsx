@@ -6,8 +6,8 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { apiRequest } from "@/lib/api";
-import { getSocket } from "@/lib/socket";
-import { Room } from "@/lib/types";
+import { getSocket, joinRoom as joinSocketRoom, leaveRoom as leaveSocketRoom } from "@/lib/socket";
+import { Room, getRankTier } from "@/lib/types";
 
 type StartPayload = { match: { id: string } };
 type HistoryResponse = {
@@ -30,6 +30,7 @@ export default function RoomPage() {
   const [pendingMatchId, setPendingMatchId] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const toMessage = (err: unknown, fallback: string) => (err instanceof Error ? err.message : fallback);
 
@@ -62,8 +63,8 @@ export default function RoomPage() {
 
   useEffect(() => {
     if (!token) return;
+    joinSocketRoom(token, code);
     const socket = getSocket(token);
-    socket.emit("room:join", { room_code: code });
 
     socket.on("room:guest_joined", (data: { guest: { id: string; username: string; elo: number } }) => {
       setStatus("Guest joined. Ready to start!");
@@ -74,7 +75,7 @@ export default function RoomPage() {
       router.push(`/battle/${match_id}`);
     });
     socket.on("match:join_room", ({ match_id }: { match_id: string }) => {
-      socket.emit("room:join", { room_code: match_id });
+      joinSocketRoom(token, match_id);
     });
     socket.on("room:options_updated", ({ options }: { options: Room["options"] }) => {
       setRoom((prev) => prev ? { ...prev, options } : prev);
@@ -86,7 +87,7 @@ export default function RoomPage() {
     });
 
     return () => {
-      socket.emit("room:leave", { room_code: code });
+      leaveSocketRoom(token, code);
       socket.off("room:guest_joined");
       socket.off("room:countdown");
       socket.off("match:started");
@@ -108,9 +109,7 @@ export default function RoomPage() {
       apiRequest<Room>({ path: `/api/rooms/${code}`, token })
         .then((fetched) => maybeAutoJoinAsGuest(fetched))
         .then(setRoom)
-        .catch(() => {
-          // no-op; keep polling
-        });
+        .catch(() => {});
     }, 1500);
     return () => window.clearInterval(interval);
   }, [token, code, room, user, maybeAutoJoinAsGuest]);
@@ -123,9 +122,7 @@ export default function RoomPage() {
           const current = history.matches.find((m) => m.roomId === room.id && m.status === "active");
           if (current) router.push(`/battle/${current.id}`);
         })
-        .catch(() => {
-          // no-op
-        });
+        .catch(() => {});
     }, 1200);
     return () => window.clearInterval(interval);
   }, [token, room, router]);
@@ -151,7 +148,7 @@ export default function RoomPage() {
     try {
       const started = await apiRequest<StartPayload>({ path: `/api/rooms/${code}/start`, method: "POST", token });
       setPendingMatchId(started.match.id);
-      setStatus(`Match created: ${started.match.id}. Countdown starting...`);
+      setStatus(`Match starting...`);
       setError("");
     } catch (err) {
       setError(toMessage(err, "Unable to start match"));
@@ -168,6 +165,12 @@ export default function RoomPage() {
     return () => window.clearTimeout(timeout);
   }, [pendingMatchId, router]);
 
+  const copyRoomCode = () => {
+    navigator.clipboard.writeText(code).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   const isHost = room?.hostId === user?.id;
   const isReady = room?.status === "ready";
   const isRoomFull = Boolean(room?.guestId);
@@ -175,41 +178,172 @@ export default function RoomPage() {
   const userRole = isHost ? "Host" : room?.guestId === user?.id ? "Guest" : "Viewer";
   const hostName = room?.host?.username ?? "Host";
   const guestName = room?.guest?.username ?? (room?.guestId ? "Joined" : "Waiting...");
+  const hostTier = getRankTier(room?.host?.elo ?? 0);
+  const guestTier = room?.guest ? getRankTier(room.guest.elo) : null;
 
   return (
-    <main className="grid gap-4 md:grid-cols-3">
-      <Card className="md:col-span-2 border-primary/20 bg-gradient-to-br from-surface to-surface-soft">
-        <p className="text-xs uppercase tracking-[0.2em] text-primary-soft">Battle Lobby</p>
-        <h1 className="mt-1 text-4xl font-semibold tracking-wider">{code}</h1>
-        <p className="mt-2 text-sm text-muted">Role: {userRole}. Share this code with your opponent.</p>
-        {countdown !== null && countdown > 0 ? (
-          <p className="mt-4 rounded-lg border border-primary/40 bg-primary/10 px-3 py-2 text-lg text-primary-soft">
-            Match starts in {countdown}s...
-          </p>
-        ) : null}
-        {status ? <p className="mt-3 text-sm text-emerald-400">{status}</p> : null}
-        {error ? <p className="mt-3 text-sm text-red-400">{error}</p> : null}
-      </Card>
-      <Card className="space-y-3">
-        <p className="text-sm text-muted">Room status: {room?.status ?? "..."}</p>
-        <div className="rounded-lg border border-border bg-surface-soft p-3 text-sm">
-          <p>
-            Host: <span className="text-foreground">{hostName}</span>
-          </p>
-          <p className="mt-1">
-            Guest: <span className="text-foreground">{guestName}</span>
-          </p>
+    <main className="max-w-4xl mx-auto space-y-6">
+
+      {/* Countdown overlay */}
+      {countdown !== null && countdown > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="text-center animate-scale-in">
+            <p className="text-xl text-gray-400 mb-4">Match starts in</p>
+            <div className="relative">
+              <svg width="160" height="160" viewBox="0 0 160 160" className="mx-auto">
+                <circle cx="80" cy="80" r="70" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="6" />
+                <circle
+                  cx="80" cy="80" r="70"
+                  fill="none"
+                  stroke="url(#countdownGrad)"
+                  strokeWidth="6"
+                  strokeLinecap="round"
+                  strokeDasharray={Math.PI * 140}
+                  strokeDashoffset={Math.PI * 140 * (1 - countdown / 5)}
+                  className="transition-all duration-1000"
+                  transform="rotate(-90 80 80)"
+                />
+                <defs>
+                  <linearGradient id="countdownGrad">
+                    <stop offset="0%" stopColor="#7c3aed" />
+                    <stop offset="100%" stopColor="#06b6d4" />
+                  </linearGradient>
+                </defs>
+              </svg>
+              <span className="absolute inset-0 flex items-center justify-center text-7xl font-black text-white">
+                {countdown}
+              </span>
+            </div>
+            <p className="text-gray-500 mt-4">Get ready to code!</p>
+          </div>
         </div>
-        <Button variant="outline" onClick={joinRoom} disabled={isHost || isRoomFull || joining}>
-          {joining ? "Joining..." : "Join as guest"}
-        </Button>
-        <Button onClick={startMatch} disabled={!isHost || !isReady || starting}>
-          {starting ? "Starting..." : "Start match"}
-        </Button>
-        {!isHost ? <p className="text-xs text-muted">Only host can start.</p> : null}
-        {isHost && !isReady ? <p className="text-xs text-muted">Waiting for guest to join...</p> : null}
-        {guestTakenByOther ? <p className="text-xs text-red-400">Room already has a different guest.</p> : null}
+      )}
+
+      {/* Room Header */}
+      <Card className="border-primary/20 bg-gradient-to-br from-surface to-surface-soft relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-48 h-48 bg-gradient-to-bl from-primary/5 to-transparent rounded-full blur-2xl" />
+        <div className="relative">
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.2em] text-primary-soft">Battle Lobby</p>
+              <div className="flex items-center gap-3 mt-1">
+                <h1 className="text-4xl font-black tracking-wider">{code}</h1>
+                <button
+                  onClick={copyRoomCode}
+                  className="px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/20 text-xs text-primary-soft hover:bg-primary/20 transition"
+                >
+                  {copied ? "✓ Copied!" : "📋 Copy"}
+                </button>
+              </div>
+              <p className="mt-2 text-sm text-muted">Role: <span className="font-semibold text-foreground">{userRole}</span></p>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-muted uppercase tracking-wider">Room Status</p>
+              <p className={`text-lg font-bold capitalize ${
+                room?.status === "waiting" ? "text-yellow-400" :
+                room?.status === "ready" ? "text-green-400" :
+                room?.status === "active" ? "text-blue-400" :
+                "text-gray-400"
+              }`}>
+                {room?.status ?? "..."}
+              </p>
+            </div>
+          </div>
+
+          {status && <p className="mt-3 text-sm text-emerald-400 bg-emerald-900/10 rounded-lg px-3 py-1.5 border border-emerald-700/20">{status}</p>}
+          {error && <p className="mt-3 text-sm text-red-400 bg-red-900/10 rounded-lg px-3 py-1.5 border border-red-700/20">{error}</p>}
+        </div>
       </Card>
+
+      {/* Room options display */}
+      {room?.options && (
+        <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
+          {[
+            { label: "Difficulty", value: room.options.difficulty ?? "Any", icon: "🎯" },
+            { label: "Time Limit", value: `${room.options.time_limit_minutes ?? 30} min`, icon: "⏱️" },
+            { label: "Commentary", value: room.options.live_commentator ? "ON" : "OFF", icon: "🤖" },
+            { label: "Idle Penalty", value: room.options.dead_mans_switch?.enabled ? "ON" : "OFF", icon: "💀" },
+          ].map(({ label, value, icon }) => (
+            <div key={label} className="rounded-xl border border-border bg-surface-soft p-3 text-center">
+              <p className="text-lg mb-1">{icon}</p>
+              <p className="text-xs text-muted uppercase tracking-wider">{label}</p>
+              <p className="font-bold text-white capitalize">{value}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Players */}
+      <div className="grid gap-4 md:grid-cols-2">
+        {/* Host */}
+        <Card className={`border-purple-700/30 ${isHost ? "ring-2 ring-purple-500/30" : ""}`}>
+          <div className="flex items-center gap-4">
+            <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${hostTier.color} flex items-center justify-center shadow-lg`}>
+              <span className="text-2xl text-white font-bold">{hostTier.icon}</span>
+            </div>
+            <div>
+              <p className="text-xs text-muted uppercase tracking-wider">Host</p>
+              <p className="text-xl font-bold text-white">{hostName}</p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className={`text-sm font-bold ${hostTier.textColor}`}>{hostTier.name}</span>
+                <span className="text-sm text-gray-400">·</span>
+                <span className="text-sm text-gray-300 font-semibold">{room?.host?.elo ?? "?"} ELO</span>
+              </div>
+            </div>
+          </div>
+          {isHost && <p className="text-xs text-purple-400 mt-3">This is you</p>}
+        </Card>
+
+        {/* Guest */}
+        <Card className={`border-cyan-700/30 ${room?.guestId === user?.id ? "ring-2 ring-cyan-500/30" : ""}`}>
+          {room?.guest ? (
+            <div className="flex items-center gap-4">
+              <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${guestTier!.color} flex items-center justify-center shadow-lg`}>
+                <span className="text-2xl text-white font-bold">{guestTier!.icon}</span>
+              </div>
+              <div>
+                <p className="text-xs text-muted uppercase tracking-wider">Guest</p>
+                <p className="text-xl font-bold text-white">{guestName}</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className={`text-sm font-bold ${guestTier!.textColor}`}>{guestTier!.name}</span>
+                  <span className="text-sm text-gray-400">·</span>
+                  <span className="text-sm text-gray-300 font-semibold">{room.guest.elo} ELO</span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 rounded-2xl border-2 border-dashed border-gray-600 flex items-center justify-center">
+                <span className="text-2xl text-gray-600">?</span>
+              </div>
+              <div>
+                <p className="text-xs text-muted uppercase tracking-wider">Guest</p>
+                <p className="text-lg text-gray-500 animate-pulse">Waiting for opponent...</p>
+              </div>
+            </div>
+          )}
+          {room?.guestId === user?.id && <p className="text-xs text-cyan-400 mt-3">This is you</p>}
+        </Card>
+      </div>
+
+      {/* Actions */}
+      <div className="flex gap-3 flex-wrap">
+        {!isHost && !isRoomFull && (
+          <Button onClick={joinRoom} disabled={joining} className="flex-1 py-3 bg-cyan-700 hover:bg-cyan-600">
+            {joining ? "Joining..." : "Join as Guest"}
+          </Button>
+        )}
+        {isHost && (
+          <Button
+            onClick={startMatch}
+            disabled={!isReady || starting}
+            className="flex-1 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 shadow-lg shadow-green-500/20"
+          >
+            {starting ? "Starting..." : isReady ? "⚔️ Start Match" : "Waiting for guest..."}
+          </Button>
+        )}
+        {guestTakenByOther && <p className="text-xs text-red-400 w-full">Room already has a different guest.</p>}
+      </div>
     </main>
   );
 }

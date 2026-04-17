@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
-import { eq } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { db } from "../db";
-import { problems, submissions, matches, matchEvents } from "../db/schema";
+import { problems, submissions, matches, matchEvents, users, topicStats } from "../db/schema";
 import { requireAuth } from "../middleware/auth";
 
 const router = Router();
@@ -247,6 +247,164 @@ router.post("/complexity", requireAuth, async (req: Request, res: Response): Pro
     res.json(result);
   } catch (err) {
     console.error("[POST /ai/complexity]", err);
+    res.status(500).json({ error: "AI unavailable" });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// NEW ENDPOINTS
+// ═══════════════════════════════════════════════════════════════════
+
+// POST /api/ai/review — Detailed code review with grades
+router.post("/review", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const { code, language, problem_title, verdict } = req.body;
+
+  if (!code) {
+    res.status(400).json({ error: "code is required" });
+    return;
+  }
+
+  try {
+    const raw = await callGroq(
+      "You are a senior code reviewer specializing in competitive programming. " +
+      "Review this solution and respond ONLY with a valid JSON object with these exact keys: " +
+      '"grade" (letter A-F), "quality" (2-3 sentences on code quality), ' +
+      '"efficiency" (2-3 sentences on efficiency improvements), ' +
+      '"bugs" (any bugs or edge case issues found, or "None found"), ' +
+      '"strengths" (what they did well). No markdown, no backticks. Pure JSON only.',
+      `Problem: ${problem_title ?? "Unknown"}\nLanguage: ${language ?? "unknown"}\nVerdict: ${verdict ?? "unknown"}\n\nCode:\n${code}`,
+      400
+    );
+
+    let review;
+    try {
+      review = JSON.parse(raw);
+    } catch {
+      review = {
+        grade: "N/A",
+        quality: raw.slice(0, 200),
+        efficiency: "Analysis unavailable.",
+        bugs: "Analysis unavailable.",
+        strengths: "Code was submitted."
+      };
+    }
+
+    res.json({ review });
+  } catch (err) {
+    console.error("[POST /ai/review]", err);
+    res.status(500).json({ error: "AI unavailable" });
+  }
+});
+
+// POST /api/ai/optimal — Show optimal solution approaches
+router.post("/optimal", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const { problem_title, problem_description, difficulty, topics } = req.body;
+
+  if (!problem_title) {
+    res.status(400).json({ error: "problem_title is required" });
+    return;
+  }
+
+  try {
+    const raw = await callGroq(
+      "You are an expert competitive programmer. Give 2-3 different approaches to solve this problem. " +
+      "For each: name the approach, explain the idea in 2-3 sentences, give time/space complexity. " +
+      'Respond ONLY with a valid JSON array: [{ "approach": "", "explanation": "", "time_complexity": "", "space_complexity": "" }]. ' +
+      "No markdown, no backticks. Pure JSON only.",
+      `Problem: ${problem_title}\nDifficulty: ${difficulty ?? "medium"}\nTopics: ${(topics ?? []).join(", ")}\n\n${problem_description ?? ""}`,
+      500
+    );
+
+    let approaches;
+    try {
+      approaches = JSON.parse(raw);
+    } catch {
+      approaches = [{
+        approach: "Standard Approach",
+        explanation: raw.slice(0, 300),
+        time_complexity: "O(n)",
+        space_complexity: "O(1)"
+      }];
+    }
+
+    res.json({ approaches });
+  } catch (err) {
+    console.error("[POST /ai/optimal]", err);
+    res.status(500).json({ error: "AI unavailable" });
+  }
+});
+
+// POST /api/ai/weakness — Analyze user's weak topics from match history
+router.post("/weakness", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.user!.id;
+
+    // Gather topic stats
+    const stats = await db.select().from(topicStats).where(eq(topicStats.userId, userId));
+
+    // Gather recent submissions
+    const recentSubs = await db
+      .select({ verdict: submissions.verdict, language: submissions.language })
+      .from(submissions)
+      .where(eq(submissions.userId, userId))
+      .orderBy(desc(submissions.submittedAt))
+      .limit(20);
+
+    const topicSummary = stats.map(s =>
+      `${s.topic}: ${s.wins}W/${s.losses}L (avg solve: ${s.avgSolveTimeMs ? Math.round(s.avgSolveTimeMs / 1000) + "s" : "N/A"})`
+    ).join("\n");
+
+    const verdictSummary = recentSubs.map(s => `${s.verdict} (${s.language})`).join(", ");
+
+    const raw = await callGroq(
+      "You are a competitive programming coach analyzing a student's performance. " +
+      "Based on their topic-by-topic stats and recent submission verdicts, identify: " +
+      "1) Their weakest topics (max 3), 2) Patterns in their failures, 3) Specific recommendations for improvement. " +
+      'Respond ONLY with valid JSON: { "weak_topics": ["topic1", "topic2"], "patterns": "one sentence", "recommendations": ["rec1", "rec2", "rec3"] }. ' +
+      "No markdown, no backticks. Pure JSON only.",
+      `Topic stats:\n${topicSummary || "No topic data yet."}\n\nRecent 20 verdicts: ${verdictSummary || "No submissions yet."}`,
+      300
+    );
+
+    let analysis;
+    try {
+      analysis = JSON.parse(raw);
+    } catch {
+      analysis = {
+        weak_topics: [],
+        patterns: raw.slice(0, 200),
+        recommendations: ["Practice more problems.", "Focus on topics with low win rates.", "Review editorials after each match."]
+      };
+    }
+
+    res.json(analysis);
+  } catch (err) {
+    console.error("[POST /ai/weakness]", err);
+    res.status(500).json({ error: "AI unavailable" });
+  }
+});
+
+// POST /api/ai/strategy — Pre-battle strategy advice
+router.post("/strategy", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const { problem_title, problem_description, difficulty, topics, current_code } = req.body;
+
+  if (!problem_title) {
+    res.status(400).json({ error: "problem_title is required" });
+    return;
+  }
+
+  try {
+    const strategy = await callGroq(
+      "You are a competitive programming strategist. Based on the problem details and the player's current code progress, " +
+      "give a brief but actionable strategy (3-4 sentences). Focus on: what approach to use, what edge cases to watch for, " +
+      "and a time management tip. Be concise and practical. Do NOT reveal the full solution — just guide the thinking.",
+      `Problem: ${problem_title} (${difficulty ?? "medium"})\nTopics: ${(topics ?? []).join(", ")}\n\nDescription: ${problem_description ?? "N/A"}\n\nCurrent code:\n${current_code ?? "(no code yet)"}`,
+      200
+    );
+
+    res.json({ strategy });
+  } catch (err) {
+    console.error("[POST /ai/strategy]", err);
     res.status(500).json({ error: "AI unavailable" });
   }
 });

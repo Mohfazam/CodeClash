@@ -367,4 +367,58 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-export default router;
+// ─── POST /api/submissions/practice — practice mode (no match required) ───
+router.post("/practice", requireAuth, async (req: Request, res: Response) => {
+  const { problemId, code, language } = req.body;
+
+  if (!problemId || !code || !language) {
+    return res.status(400).json({ error: "problemId, code, and language are required" });
+  }
+
+  try {
+    const [problem] = await db
+      .select()
+      .from(problems)
+      .where(eq(problems.id, problemId))
+      .limit(1);
+
+    if (!problem) return res.status(404).json({ error: "Problem not found" });
+
+    const result = await judgeCode(code, language, problem.testCases ?? []);
+
+    // Return only non-hidden test case details
+    const visibleTests = (problem.testCases ?? [])
+      .filter(tc => !tc.is_hidden)
+      .map((tc, i) => {
+        try {
+          if (language === "javascript") {
+            const fn = new Function(
+              "input",
+              `${code}\nreturn typeof solution !== 'undefined' ? solution(input) : null;`
+            );
+            const output = String(fn(tc.input)).trim();
+            return {
+              input: tc.input,
+              expected: tc.expected_output,
+              actual: output,
+              passed: output === tc.expected_output.trim(),
+            };
+          }
+          return { input: tc.input, expected: tc.expected_output, actual: "N/A", passed: false };
+        } catch {
+          return { input: tc.input, expected: tc.expected_output, actual: "Error", passed: false };
+        }
+      });
+
+    res.json({
+      ...result,
+      practice: true,
+      test_details: visibleTests,
+    });
+  } catch (err) {
+    console.error("[POST /submissions/practice]", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+export default router;
