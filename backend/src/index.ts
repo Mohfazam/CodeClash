@@ -23,13 +23,6 @@ app.use(cors());
 // ─── CORS — single config, applied once, trailing slash stripped ──────────────
 const clientUrl = (process.env.CLIENT_URL ?? "http://localhost:5173").replace(/\/$/, "");
 
-app.use(
-  cors({
-    origin: clientUrl,
-    credentials: true,
-  })
-);
-
 // ─── Socket.io ────────────────────────────────────────────────────────────────
 export const io = new SocketIOServer(httpServer, {
   cors: {
