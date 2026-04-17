@@ -32,8 +32,7 @@ const loginSchema = z.object({
 router.post("/register", async (req: Request, res: Response): Promise<void> => {
   const parsed = registerSchema.safeParse(req.body);
   if (!parsed.success) {
-    //@ts-ignore
-    res.status(400).json({ error: parsed.error.errors[0].message });
+    res.status(400).json({ error: parsed.error.issues[0].message });
     return;
   }
 
@@ -67,7 +66,8 @@ router.post("/register", async (req: Request, res: Response): Promise<void> => {
     // Hash password & insert user
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
-    const [newUser] = await db
+    // ✅ FIX: Don't destructure directly — guard against empty/undefined result
+    const inserted = await db
       .insert(users)
       .values({ email, username, passwordHash })
       .returning({
@@ -76,6 +76,13 @@ router.post("/register", async (req: Request, res: Response): Promise<void> => {
         email: users.email,
         elo: users.elo,
       });
+
+    const newUser = inserted[0];
+
+    if (!newUser) {
+      res.status(500).json({ error: "Failed to create user" });
+      return;
+    }
 
     const token = signToken(newUser);
 
@@ -94,9 +101,7 @@ router.post("/register", async (req: Request, res: Response): Promise<void> => {
 router.post("/login", async (req: Request, res: Response): Promise<void> => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
-    //@ts-ignore
-
-    res.status(400).json({ error: parsed.error.errors[0].message });
+    res.status(400).json({ error: parsed.error.issues[0].message });
     return;
   }
 
@@ -116,7 +121,6 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
       .limit(1);
 
     if (!user) {
-      // Vague message to prevent email enumeration
       res.status(401).json({ error: "Invalid email or password" });
       return;
     }

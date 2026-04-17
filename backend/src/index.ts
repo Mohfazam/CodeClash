@@ -5,7 +5,6 @@ import { createServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
 import jwt from "jsonwebtoken";
 
-
 // Routes
 import authRouter from "./routes/auth";
 import roomsRouter from "./routes/rooms";
@@ -19,11 +18,20 @@ import aiRouter from "./routes/ai";
 const app = express();
 const httpServer = createServer(app);
 
-app.use(cors());
+// ─── CORS — single config, applied once, trailing slash stripped ──────────────
+const clientUrl = (process.env.CLIENT_URL ?? "http://localhost:5173").replace(/\/$/, "");
+
+app.use(
+  cors({
+    origin: clientUrl,
+    credentials: true,
+  })
+);
+
 // ─── Socket.io ────────────────────────────────────────────────────────────────
 export const io = new SocketIOServer(httpServer, {
   cors: {
-    origin: process.env.CLIENT_URL ?? "http://localhost:5173",
+    origin: clientUrl,
     methods: ["GET", "POST"],
     credentials: true,
   },
@@ -49,7 +57,6 @@ io.use((socket, next) => {
 });
 
 // ─── Dead Man's Switch state ──────────────────────────────────────────────────
-// key: `${matchId}:${userId}`
 const idleWarningTimers = new Map<string, NodeJS.Timeout>();
 const idleDeleteTimers = new Map<string, NodeJS.Timeout>();
 
@@ -90,7 +97,7 @@ function resetIdleTimer(matchId: string, userId: string) {
 const matchIntervals = new Map<string, NodeJS.Timeout>();
 
 export function startMatchTimer(matchId: string, timeLimitMs: number) {
-  if (matchIntervals.has(matchId)) return; // already running
+  if (matchIntervals.has(matchId)) return;
 
   let remaining = timeLimitMs;
 
@@ -128,8 +135,6 @@ io.on("connection", (socket) => {
 
   console.log(`[socket] connected: ${socket.id} (user: ${username})`);
 
-  // ── Room events ────────────────────────────────────────────────────────────
-
   socket.on("room:join", ({ room_code }: { room_code: string }) => {
     socket.join(room_code);
     console.log(`[socket] ${username} joined room ${room_code}`);
@@ -139,9 +144,6 @@ io.on("connection", (socket) => {
     socket.leave(room_code);
   });
 
-  // ── Match events ───────────────────────────────────────────────────────────
-
-  // Opponent typing indicator (debounced on client side)
   socket.on("code:update", ({ match_id }: { match_id: string; code_length: number; cursor_line: number }) => {
     socket.to(match_id).emit("match:opponent_typing", {
       is_typing: true,
@@ -149,7 +151,6 @@ io.on("connection", (socket) => {
     });
   });
 
-  // Legacy relay — keep for backward compat
   socket.on(
     "code_change",
     (data: { roomCode: string; code: string; language: string; userId: string }) => {
@@ -161,34 +162,29 @@ io.on("connection", (socket) => {
     }
   );
 
-  // ── Dead Man's Switch heartbeat ────────────────────────────────────────────
   socket.on("idle:heartbeat", ({ match_id }: { match_id: string }) => {
     if (!match_id) return;
     resetIdleTimer(match_id, userId);
   });
 
-  // ── Surrender via socket (alternative to REST) ─────────────────────────────
   socket.on("match:surrender", ({ match_id }: { match_id: string }) => {
     socket.to(match_id).emit("match:opponent_surrendered", { user_id: userId });
   });
 
-  // ── Spectator join notification ────────────────────────────────────────────
   socket.on("spectator:join", ({ match_id }: { match_id: string }) => {
     socket.join(match_id);
     socket.to(match_id).emit("match:spectator_joined", { username });
   });
 
-  // ── Disconnect cleanup ─────────────────────────────────────────────────────
   socket.on("disconnect", () => {
     console.log(`[socket] disconnected: ${socket.id} (user: ${username})`);
-    // Clean up any idle timers for this user across all matches
     for (const key of idleWarningTimers.keys()) {
       if (key.endsWith(`:${userId}`)) clearIdleTimers(key);
     }
   });
 });
 
-// ─── Helper: broadcast submission result to a match room ─────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 export function broadcastSubmissionResult(
   matchId: string,
   payload: {
@@ -200,15 +196,11 @@ export function broadcastSubmissionResult(
   }
 ) {
   io.to(matchId).emit("match:submission_result", payload);
-
   if (payload.verdict === "accepted") {
-    io.to(matchId).emit("match:opponent_accepted", {
-      user_id: payload.user_id,
-    });
+    io.to(matchId).emit("match:opponent_accepted", { user_id: payload.user_id });
   }
 }
 
-// ─── Helper: broadcast match ended ───────────────────────────────────────────
 export function broadcastMatchEnded(
   matchId: string,
   payload: {
@@ -221,13 +213,11 @@ export function broadcastMatchEnded(
   io.to(matchId).emit("match:ended", payload);
 }
 
-// ─── Helper: broadcast AI commentary ─────────────────────────────────────────
 export function broadcastAiComment(matchId: string, comment: string) {
   io.to(matchId).emit("match:ai_comment", { comment, timestamp: Date.now() });
 }
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
-app.use(cors({ origin: process.env.CLIENT_URL ?? "http://localhost:5173", credentials: true }));
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true }));
 
