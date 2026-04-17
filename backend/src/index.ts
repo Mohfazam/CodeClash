@@ -18,6 +18,8 @@ import aiRouter from "./routes/ai";
 const app = express();
 const httpServer = createServer(app);
 
+app.use(cors());
+
 // ─── CORS — single config, applied once, trailing slash stripped ──────────────
 const clientUrl = (process.env.CLIENT_URL ?? "http://localhost:5173").replace(/\/$/, "");
 
