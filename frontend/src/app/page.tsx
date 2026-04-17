@@ -22,7 +22,7 @@ export default function Home() {
           {"// O(n log n) solution"}
         </div>
         <div className="absolute top-[70%] left-[5%] text-red-500/10 font-mono text-sm animate-float" style={{ animationDelay: "1.5s" }}>
-          {"ACCEPTED ✓"}
+          {"ACCEPTED"}
         </div>
       </div>
 
@@ -101,7 +101,7 @@ export default function Home() {
         <div className="grid gap-6 md:grid-cols-3">
           {[
             {
-              icon: "⚔️",
+              icon: "BATTLE",
               title: "1v1 Code Battles",
               desc: "Real-time competitive matches with live timers, opponent tracking, and instant verdict feedback.",
               gradient: "from-purple-500/10 to-purple-500/0",
@@ -136,7 +136,7 @@ export default function Home() {
               border: "border-green-500/20",
             },
             {
-              icon: "🏆",
+              icon: "TROPHY",
               title: "Rank System",
               desc: "Bronze → Silver → Gold → Platinum → Diamond → Master → Legend. Where will you land?",
               gradient: "from-yellow-500/10 to-yellow-500/0",

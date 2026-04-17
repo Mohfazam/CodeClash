@@ -14,6 +14,9 @@ export default function NewRoomPage() {
   const router = useRouter();
   const { token } = useAuth();
   const [error, setError] = useState("");
+  const [mode, setMode] = useState<"create" | "join">("create");
+  const [roomCode, setRoomCode] = useState("");
+  const [joining, setJoining] = useState(false);
 
   // Room options
   const [difficulty, setDifficulty] = useState<"easy" | "medium" | "hard">("medium");
@@ -36,12 +39,14 @@ export default function NewRoomPage() {
         method: "POST",
         token,
         body: {
-          difficulty,
-          time_limit_minutes: timeLimit,
-          topic: selectedTopic,
-          live_commentator: liveCommentator,
-          dead_mans_switch: { enabled: deadMansSwitch, idle_seconds: idleSeconds },
-          blind_rating: { enabled: blindRating },
+          options: {
+            difficulty,
+            time_limit_minutes: timeLimit,
+            topic: selectedTopic,
+            live_commentator: liveCommentator,
+            dead_mans_switch: { enabled: deadMansSwitch, idle_seconds: idleSeconds },
+            blind_rating: { enabled: blindRating },
+          }
         },
       });
       router.push(`/room/${room.roomCode}`);
@@ -52,27 +57,91 @@ export default function NewRoomPage() {
     }
   };
 
+  const joinRoom = async () => {
+    if (!token || !roomCode) return;
+    setJoining(true);
+    setError("");
+
+    try {
+      await apiRequest({ path: `/api/rooms/${roomCode}/join`, method: "POST", token });
+      router.push(`/room/${roomCode}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to join room");
+    } finally {
+      setJoining(false);
+    }
+  };
+
   const difficultyOptions = [
-    { value: "easy", label: "Easy", emoji: "🟢", desc: "Good for warm-up", color: "border-green-500/50 bg-green-900/10 hover:bg-green-900/20", active: "ring-2 ring-green-500 bg-green-900/30" },
-    { value: "medium", label: "Medium", emoji: "🟡", desc: "Balanced challenge", color: "border-yellow-500/50 bg-yellow-900/10 hover:bg-yellow-900/20", active: "ring-2 ring-yellow-500 bg-yellow-900/30" },
-    { value: "hard", label: "Hard", emoji: "🔴", desc: "For the brave", color: "border-red-500/50 bg-red-900/10 hover:bg-red-900/20", active: "ring-2 ring-red-500 bg-red-900/30" },
+    { value: "easy", label: "Easy", desc: "Good for warm-up", color: "border-green-500/50 bg-green-900/10 hover:bg-green-900/20", active: "ring-2 ring-green-500 bg-green-900/30" },
+    { value: "medium", label: "Medium", desc: "Balanced challenge", color: "border-yellow-500/50 bg-yellow-900/10 hover:bg-yellow-900/20", active: "ring-2 ring-yellow-500 bg-yellow-900/30" },
+    { value: "hard", label: "Hard", desc: "For the brave", color: "border-red-500/50 bg-red-900/10 hover:bg-red-900/20", active: "ring-2 ring-red-500 bg-red-900/30" },
   ] as const;
 
   const timeLimitOptions = [10, 15, 20, 30, 45, 60];
 
   return (
     <main className="max-w-3xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Create Battle Room</h1>
-        <p className="text-muted text-sm mt-1">Configure your match settings and challenge an opponent</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">{mode === "create" ? "Create" : "Join"} Battle Room</h1>
+          <p className="text-muted text-sm mt-1">{mode === "create" ? "Configure your match settings and challenge an opponent" : "Enter a room code to join a battle"}</p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setMode("create")}
+            className={`px-4 py-2 rounded-lg font-medium transition-all ${
+              mode === "create"
+                ? "bg-primary text-white"
+                : "bg-surface-soft text-muted hover:text-white hover:bg-surface"
+            }`}
+          >
+            Create
+          </button>
+          <button
+            onClick={() => setMode("join")}
+            className={`px-4 py-2 rounded-lg font-medium transition-all ${
+              mode === "join"
+                ? "bg-primary text-white"
+                : "bg-surface-soft text-muted hover:text-white hover:bg-surface"
+            }`}
+          >
+            Join
+          </button>
+        </div>
       </div>
 
       {error && (
         <div className="rounded-xl border border-red-800 bg-red-950 p-3 text-sm text-red-200">{error}</div>
       )}
 
+      {mode === "join" && (
+        <Card className="border-primary/20 bg-gradient-to-br from-surface to-surface-soft p-6">
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-semibold text-white mb-2">Room Code</label>
+              <input
+                type="text"
+                placeholder="e.g. ABC123"
+                value={roomCode}
+                onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
+                className="w-full px-4 py-3 rounded-lg bg-slate-800 border border-slate-700 text-white placeholder-gray-500 focus:border-primary focus:outline-none"
+              />
+              <p className="text-xs text-muted mt-1">Enter the 6-character room code from your friend</p>
+            </div>
+            <Button
+              onClick={joinRoom}
+              disabled={joining || !roomCode || roomCode.length !== 6}
+              className="w-full py-3 text-base font-bold bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 shadow-lg shadow-purple-500/20"
+            >
+              {joining ? "Joining..." : "Join Room"}
+            </Button>
+          </div>
+        </Card>
+      )}
+
       {/* Difficulty Selector */}
-      <section>
+      {mode === "create" && (
         <h2 className="font-semibold text-lg mb-1">Difficulty</h2>
         <p className="text-xs text-muted mb-4">Choose the problem difficulty for this battle</p>
         <div className="grid gap-3 grid-cols-3">
@@ -84,7 +153,6 @@ export default function NewRoomPage() {
                 difficulty === opt.value ? opt.active : opt.color
               }`}
             >
-              <span className="text-3xl block mb-2">{opt.emoji}</span>
               <p className="font-bold text-white text-lg">{opt.label}</p>
               <p className="text-xs text-muted mt-1">{opt.desc}</p>
             </button>
@@ -93,7 +161,7 @@ export default function NewRoomPage() {
       </section>
 
       {/* Topic Picker */}
-      <section>
+      {mode === "create" && (
         <h2 className="font-semibold text-lg mb-1">Topic (Optional)</h2>
         <p className="text-xs text-muted mb-4">Filter problems by topic, or leave blank for random</p>
         <div className="flex flex-wrap gap-2">
@@ -105,7 +173,7 @@ export default function NewRoomPage() {
                 : "bg-transparent text-muted border-border hover:border-gray-500 hover:text-white"
             }`}
           >
-            🎲 Random
+            Random
           </button>
           {TOPICS.map((topic) => (
             <button
@@ -124,7 +192,7 @@ export default function NewRoomPage() {
       </section>
 
       {/* Time Limit */}
-      <section>
+      {mode === "create" && (
         <h2 className="font-semibold text-lg mb-1">Time Limit</h2>
         <p className="text-xs text-muted mb-4">How long each player gets to solve the problem</p>
         <div className="flex flex-wrap gap-2">
@@ -143,9 +211,10 @@ export default function NewRoomPage() {
           ))}
         </div>
       </section>
+      )}
 
       {/* Advanced Options */}
-      <section className="space-y-3">
+      {mode === "create" && (
         <h2 className="font-semibold text-lg mb-1">Battle Features</h2>
         <p className="text-xs text-muted mb-4">Customize your battle experience</p>
 
@@ -160,7 +229,7 @@ export default function NewRoomPage() {
             }`}
           >
             <div className="flex items-center justify-between mb-2">
-              <span className="text-lg">🤖</span>
+              <span className="text-lg font-bold text-cyan-400">AI</span>
               <div className={`w-10 h-5 rounded-full transition-all ${liveCommentator ? "bg-cyan-500" : "bg-gray-700"}`}>
                 <div className={`w-4 h-4 rounded-full bg-white shadow-sm transition-all mt-0.5 ${liveCommentator ? "ml-5" : "ml-0.5"}`} />
               </div>
@@ -179,7 +248,7 @@ export default function NewRoomPage() {
             }`}
           >
             <div className="flex items-center justify-between mb-2">
-              <span className="text-lg">💀</span>
+              <span className="text-lg font-bold text-red-400">IDLE</span>
               <div className={`w-10 h-5 rounded-full transition-all ${deadMansSwitch ? "bg-red-500" : "bg-gray-700"}`}>
                 <div className={`w-4 h-4 rounded-full bg-white shadow-sm transition-all mt-0.5 ${deadMansSwitch ? "ml-5" : "ml-0.5"}`} />
               </div>
@@ -198,7 +267,7 @@ export default function NewRoomPage() {
             }`}
           >
             <div className="flex items-center justify-between mb-2">
-              <span className="text-lg">🎭</span>
+              <span className="text-lg font-bold text-purple-400">BLIND</span>
               <div className={`w-10 h-5 rounded-full transition-all ${blindRating ? "bg-purple-500" : "bg-gray-700"}`}>
                 <div className={`w-4 h-4 rounded-full bg-white shadow-sm transition-all mt-0.5 ${blindRating ? "ml-5" : "ml-0.5"}`} />
               </div>
@@ -211,7 +280,7 @@ export default function NewRoomPage() {
           {deadMansSwitch && (
             <div className="rounded-2xl border border-border bg-surface-soft p-4">
               <div className="flex items-center gap-2 mb-3">
-                <span className="text-lg">⏰</span>
+                <span className="text-lg font-bold text-orange-400">TIME</span>
                 <div>
                   <p className="font-semibold text-white text-sm">Idle Threshold</p>
                   <p className="text-xs text-muted">Seconds before idle penalty triggers</p>
@@ -236,8 +305,10 @@ export default function NewRoomPage() {
           )}
         </div>
       </section>
+      )}
 
       {/* Preview & Create */}
+      {mode === "create" && (
       <Card className="border-primary/20 bg-gradient-to-br from-surface to-surface-soft">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
@@ -254,9 +325,9 @@ export default function NewRoomPage() {
               <span className="font-medium">{timeLimit} min</span>
               <span className="text-muted">·</span>
               <span className="capitalize">{selectedTopic ?? "random topic"}</span>
-              {liveCommentator && <span className="text-cyan-400 text-xs">🤖 AI ON</span>}
-              {deadMansSwitch && <span className="text-red-400 text-xs">💀 DMS ON</span>}
-              {blindRating && <span className="text-purple-400 text-xs">🎭 Blind</span>}
+              {liveCommentator && <span className="text-cyan-400 text-xs">AI ON</span>}
+              {deadMansSwitch && <span className="text-red-400 text-xs">IDLE ON</span>}
+              {blindRating && <span className="text-purple-400 text-xs">BLIND</span>}
             </div>
           </div>
           <Button
@@ -264,10 +335,11 @@ export default function NewRoomPage() {
             disabled={creating}
             className="px-8 py-3 text-base font-bold bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 shadow-lg shadow-purple-500/20"
           >
-            {creating ? "Creating..." : "⚔️ Create Room"}
+            {creating ? "Creating..." : "Create Room"}
           </Button>
         </div>
       </Card>
+      )}
     </main>
   );
 }

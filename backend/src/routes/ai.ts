@@ -144,7 +144,7 @@ router.post("/roast", requireAuth, async (req: Request, res: Response): Promise<
   }
 });
 
-// POST /api/ai/comment — live commentator generates a comment for a match event
+// POST /api/ai/comment — live commentator generates roasts/sarcasm/jokes
 router.post("/comment", requireAuth, async (req: Request, res: Response): Promise<void> => {
   const { matchId } = req.body;
 
@@ -169,9 +169,9 @@ router.post("/comment", requireAuth, async (req: Request, res: Response): Promis
       .join("\n");
 
     const comment = await callGroq(
-      "You are an energetic esports commentator for a competitive coding battle. Based on recent match events, generate ONE punchy commentary line (under 20 words). Be hype but technical. Use exclamation points.",
+      "You are a sarcastic, witty esports commentator for competitive coding. Based on recent match events, generate ONE hilarious roast, sarcastic joke, or witty comment (under 25 words). Be funny and mocking but not mean-spirited. Reference the actual events. NO hints, NO solutions, just pure comedy.",
       `Recent events:\n${eventSummary}`,
-      60
+      80
     );
 
     await db.insert(matchEvents).values({

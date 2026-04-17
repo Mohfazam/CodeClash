@@ -22,11 +22,11 @@ function formatMs(ms: number | null) {
 
 function eventLabel(e: MatchEvent): { label: string; icon: string; color: string } {
   switch (e.eventType) {
-    case "match_start": return { label: "Match started", icon: "🚀", color: "border-green-500 bg-green-500" };
-    case "match_end": return { label: "Match ended", icon: "🏁", color: "border-blue-500 bg-blue-500" };
-    case "ai_comment": return { label: `AI: "${(e.payload as any)?.comment ?? ""}"`, icon: "🤖", color: "border-cyan-500 bg-cyan-500" };
-    case "surrender": return { label: "Player surrendered", icon: "🏳️", color: "border-yellow-500 bg-yellow-500" };
-    case "submission": return { label: `Submission: ${((e.payload as any)?.verdict ?? "").toUpperCase()}`, icon: "📤", color: (e.payload as any)?.verdict === "accepted" ? "border-green-500 bg-green-500" : "border-red-500 bg-red-500" };
+    case "match_start": return { label: "Match started", icon: "START", color: "border-green-500 bg-green-500" };
+    case "match_end": return { label: "Match ended", icon: "END", color: "border-blue-500 bg-blue-500" };
+    case "ai_comment": return { label: `AI Commentator: "${(e.payload as any)?.comment ?? ""}"`, icon: "AI", color: "border-cyan-500 bg-cyan-500" };
+    case "surrender": return { label: "Player surrendered", icon: "SURRENDER", color: "border-yellow-500 bg-yellow-500" };
+    case "submission": return { label: `Submission: ${((e.payload as any)?.verdict ?? "").toUpperCase()}`, icon: "SUBMIT", color: (e.payload as any)?.verdict === "accepted" ? "border-green-500 bg-green-500" : "border-red-500 bg-red-500" };
     default: return { label: e.eventType, icon: "•", color: "border-gray-500 bg-gray-500" };
   }
 }
@@ -189,7 +189,7 @@ export default function MatchDebriefPage() {
                 result === "Victory" ? "bg-green-800 text-green-200" :
                 result === "Defeat" ? "bg-red-800 text-red-200" : "bg-yellow-800 text-yellow-200"
               }`}>
-                {result === "Victory" ? "🏆" : result === "Defeat" ? "💀" : "🤝"} {result.toUpperCase()}
+                {result === "Victory" ? "WIN" : result === "Defeat" ? "LOSS" : "DRAW"} - {result.toUpperCase()}
               </span>
               <span className="text-sm opacity-60">{data?.problem.difficulty}</span>
               {data?.problem.topics?.map((t) => (
@@ -561,10 +561,10 @@ export default function MatchDebriefPage() {
           🏠 Dashboard
         </Link>
         <Link href="/leaderboard" className="flex-1 min-w-[140px] rounded-xl border border-slate-700 bg-slate-800/60 px-4 py-3 text-sm font-semibold text-center hover:bg-slate-700/60 transition">
-          🏆 Leaderboard
+          Leaderboard
         </Link>
         <Link href="/room/new" className="flex-1 min-w-[140px] rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 px-4 py-3 text-sm font-bold text-white text-center hover:from-cyan-500 hover:to-blue-500 transition shadow-lg">
-          ⚔️ New Battle
+          New Battle
         </Link>
       </div>
     </main>

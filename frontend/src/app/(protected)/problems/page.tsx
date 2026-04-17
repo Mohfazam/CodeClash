@@ -90,7 +90,7 @@ export default function ProblemsPage() {
           onClick={handleRandomProblem}
           className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500"
         >
-          🎲 Random Problem
+          Random Problem
         </Button>
       </div>
 

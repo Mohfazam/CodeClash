@@ -132,6 +132,11 @@ export default function BattlePage() {
           const elapsed = Date.now() - startedAt;
           const initialRemaining = Math.max(0, timeLimitMs - elapsed);
           setRemainingMs(initialRemaining);
+        } else if (!data.startedAt && (data.roomOptions as any)?.time_limit_minutes) {
+          // Fallback: if startedAt is missing, use time limit as starting point
+          const timeLimitMinutes = (data.roomOptions as any)?.time_limit_minutes ?? 30;
+          const timeLimitMs = timeLimitMinutes * 60 * 1000;
+          setRemainingMs(timeLimitMs);
         }
 
         // Also load existing AI commentary from events
@@ -579,8 +584,8 @@ export default function BattlePage() {
             verdictFlash.verdict === "wrong_answer" ? "text-red-400" :
             "text-orange-400"
           }`}>
-            {verdictFlash.verdict === "accepted" ? "ACCEPTED ✓" :
-             verdictFlash.verdict === "wrong_answer" ? "WRONG ANSWER ✗" :
+            {verdictFlash.verdict === "accepted" ? "ACCEPTED" :
+             verdictFlash.verdict === "wrong_answer" ? "WRONG ANSWER" :
              verdictFlash.verdict === "runtime_error" ? "RUNTIME ERROR" :
              verdictFlash.verdict?.toUpperCase().replace(/_/g, " ")}
           </div>
@@ -598,7 +603,7 @@ export default function BattlePage() {
               : "border-yellow-500/60 bg-gradient-to-br from-yellow-950 to-slate-900"
           }`}>
             <div className="text-7xl mb-4">
-              {matchEnded.winner_id === user?.id ? "🏆" : matchEnded.winner_id ? "💀" : "🤝"}
+              {matchEnded.winner_id === user?.id ? "WIN" : matchEnded.winner_id ? "LOSS" : "DRAW"}
             </div>
             <h2 className="text-4xl font-black mb-2">
               {matchEnded.winner_id === user?.id ? "VICTORY!" : matchEnded.winner_id ? "DEFEAT" : "DRAW"}

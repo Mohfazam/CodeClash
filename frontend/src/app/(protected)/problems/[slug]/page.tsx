@@ -193,7 +193,7 @@ export default function ProblemDetailPage() {
               activeTab === "submissions" ? "bg-slate-700 text-white" : "text-gray-500 hover:text-gray-300"
             }`}
           >
-            Results {practiceResult ? "✓" : ""}
+            Results {practiceResult ? "PASSED" : ""}
           </button>
         </div>
 

@@ -232,7 +232,7 @@ export default function RoomPage() {
                   onClick={copyRoomCode}
                   className="px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/20 text-xs text-primary-soft hover:bg-primary/20 transition"
                 >
-                  {copied ? "✓ Copied!" : "📋 Copy"}
+                  {copied ? "Copied!" : "Copy"}
                 </button>
               </div>
               <p className="mt-2 text-sm text-muted">Role: <span className="font-semibold text-foreground">{userRole}</span></p>
@@ -261,8 +261,8 @@ export default function RoomPage() {
           {[
             { label: "Difficulty", value: room.options.difficulty ?? "Any", icon: "🎯" },
             { label: "Time Limit", value: `${room.options.time_limit_minutes ?? 30} min`, icon: "⏱️" },
-            { label: "Commentary", value: room.options.live_commentator ? "ON" : "OFF", icon: "🤖" },
-            { label: "Idle Penalty", value: room.options.dead_mans_switch?.enabled ? "ON" : "OFF", icon: "💀" },
+            { label: "Commentary", value: room.options.live_commentator ? "ON" : "OFF", icon: "AI" },
+            { label: "Idle Penalty", value: room.options.dead_mans_switch?.enabled ? "ON" : "OFF", icon: "IDLE" },
           ].map(({ label, value, icon }) => (
             <div key={label} className="rounded-xl border border-border bg-surface-soft p-3 text-center">
               <p className="text-lg mb-1">{icon}</p>
@@ -339,7 +339,7 @@ export default function RoomPage() {
             disabled={!isReady || starting}
             className="flex-1 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 shadow-lg shadow-green-500/20"
           >
-            {starting ? "Starting..." : isReady ? "⚔️ Start Match" : "Waiting for guest..."}
+            {starting ? "Starting..." : isReady ? "Start Match" : "Waiting for guest..."}
           </Button>
         )}
         {guestTakenByOther && <p className="text-xs text-red-400 w-full">Room already has a different guest.</p>}

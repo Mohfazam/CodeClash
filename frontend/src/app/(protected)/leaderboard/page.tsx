@@ -25,8 +25,8 @@ export default function LeaderboardPage() {
   useEffect(() => {
     if (!token) return;
     setLoading(true);
-    apiRequest<LeaderboardEntry[]>({ path: "/api/leaderboard", token })
-      .then(setPlayers)
+    apiRequest<{ leaderboard: LeaderboardEntry[] }>({ path: "/api/leaderboard", token })
+      .then((data) => setPlayers(data.leaderboard))
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load leaderboard"))
       .finally(() => setLoading(false));
   }, [token]);
@@ -49,7 +49,7 @@ export default function LeaderboardPage() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-3xl font-bold">🏆 Leaderboard</h1>
+          <h1 className="text-3xl font-bold">Leaderboard</h1>
           <p className="text-muted text-sm mt-1">Top competitive coders ranked by ELO</p>
         </div>
         {myRank > 0 && (
@@ -121,8 +121,7 @@ export default function LeaderboardPage() {
 
       {players.length === 0 && (
         <Card className="py-8 text-center text-muted">
-          <p className="text-lg mb-2">🏆</p>
-          <p>No players yet. Be the first to compete!</p>
+          <p className="text-lg mb-2">No players yet. Be the first to compete!</p>
         </Card>
       )}
     </main>
@@ -131,14 +130,14 @@ export default function LeaderboardPage() {
 
 function PodiumCard({ player, rank }: { player: LeaderboardEntry; rank: number }) {
   const tier = getRankTier(player.elo);
-  const medals = ["", "🥇", "🥈", "🥉"];
+  const medals = ["", "1st", "2nd", "3rd"];
   const heights = ["", "h-32", "h-24", "h-20"];
   const glows = ["", "shadow-yellow-500/30", "shadow-gray-400/20", "shadow-orange-400/20"];
 
   return (
     <Link href={`/profile/${player.username}`}>
       <div className={`rounded-2xl border border-slate-700/60 bg-gradient-to-b from-surface-soft to-surface p-5 text-center hover:border-primary/30 transition cursor-pointer shadow-lg ${glows[rank]}`}>
-        <div className="text-4xl mb-3">{medals[rank]}</div>
+        <div className="text-2xl font-bold mb-3 text-yellow-500">{medals[rank]}</div>
         <div className={`w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br ${tier.color} flex items-center justify-center shadow-xl mb-3`}>
           <span className="text-2xl text-white font-bold">{tier.icon}</span>
         </div>

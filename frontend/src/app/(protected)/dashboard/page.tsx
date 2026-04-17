@@ -256,7 +256,7 @@ export default function DashboardPage() {
 
         <Link href="/room/new">
           <Button className="px-8 py-3 text-base font-bold bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 animate-pulse shadow-lg shadow-cyan-500/20">
-            ⚔️ Start Battle
+            Start Battle
           </Button>
         </Link>
       </div>
@@ -372,7 +372,7 @@ export default function DashboardPage() {
           </div>
           {recentMatches.length === 0 ? (
             <Card className="py-6 text-center text-muted">
-              <p className="text-lg mb-2">⚔️</p>
+              <p className="text-lg mb-2">No recent battles</p>
               <p>No battles yet. Start your first match!</p>
             </Card>
           ) : (
@@ -462,7 +462,7 @@ export default function DashboardPage() {
             <div className="space-y-2">
               <Link href="/room/new" className="block">
                 <Button className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500" size="sm">
-                  ⚔️ Create Room
+                  Create Room
                 </Button>
               </Link>
               <Link href="/problems" className="block">
@@ -472,7 +472,7 @@ export default function DashboardPage() {
               </Link>
               <Link href="/leaderboard" className="block">
                 <Button variant="outline" className="w-full" size="sm">
-                  🏆 Leaderboard
+                  Leaderboard
                 </Button>
               </Link>
             </div>

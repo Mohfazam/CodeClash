@@ -23,13 +23,34 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
       .limit(Number(limit))
       .offset(Number(offset));
 
-    // Add rank
-    const ranked = top.map((u, i) => ({
-      rank: Number(offset) + i + 1,
-      ...u,
-    }));
+    // Calculate wins/losses for each player
+    const rankedWithStats = await Promise.all(
+      top.map(async (u, i) => {
+        const wins = await db
+          .select()
+          .from(matches)
+          .where(eq(matches.winnerId, u.id));
+        
+        const losses = await db
+          .select()
+          .from(matches)
+          .where(or(
+            eq(matches.player1Id, u.id),
+            eq(matches.player2Id, u.id)
+          ))
+          .then(all => all.filter(m => m.winnerId && m.winnerId !== u.id && m.status === "finished"));
+        
+        return {
+          rank: Number(offset) + i + 1,
+          ...u,
+          wins: wins.length,
+          losses: losses.length,
+          totalMatches: wins.length + losses.length,
+        };
+      })
+    );
 
-    res.json({ leaderboard: ranked, limit: Number(limit), offset: Number(offset) });
+    res.json({ leaderboard: rankedWithStats, limit: Number(limit), offset: Number(offset) });
   } catch (err) {
     console.error("[GET /leaderboard]", err);
     res.status(500).json({ error: "Internal server error" });
